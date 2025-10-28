@@ -228,4 +228,4 @@ if __name__ == "__main__":
 
     vis = Visualizer(world)
     vis.setup()
-    vis.run(steps=frames, interval=1)
+    vis.run(steps=frames, interval=1, save=True)
