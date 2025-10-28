@@ -77,7 +77,7 @@ class Obstacle:
     
 
 class World:
-    def __init__(self, xlim=(-12,12), ylim=(-12,12), resolution=300):
+    def __init__(self, xlim=(-12,12), ylim=(-12,12), resolution=100):
         self.x_grid = np.linspace(xlim[0], xlim[1], resolution)
         self.y_grid = np.linspace(ylim[0], ylim[1], resolution)
         self.X, self.Y = np.meshgrid(self.x_grid, self.y_grid)
@@ -214,18 +214,18 @@ class Visualizer:
 
 if __name__ == "__main__":
     world = World()
-    world.add_obstacle(Obstacle((3, 3), 2, 2, 0, 0.5))
+    # world.add_obstacle(Obstacle((3, 3), 2, 2, 0, 0.5))
 
     station = Entity("Station", (0,0), 4.0, 1.0)
     world.add_agent(station)
 
     frames = 150
-    # path1 = list(zip(np.linspace(9,7,frames), np.linspace(0,7,frames)))
+    path1 = list(zip(np.linspace(9,7,frames), np.linspace(0,7,frames)))
     path2 = list(zip(np.linspace(-1,8,frames), np.linspace(1,4,frames)))
 
-    # world.add_agent(Robot("Robot A", path1, 4.0, 0.4, 'b'))
+    world.add_agent(Robot("Robot A", path1, 4.0, 0.4, 'b'))
     world.add_agent(Robot("Robot B", path2, 4.0, 0.4, 'c'))
 
     vis = Visualizer(world)
     vis.setup()
-    vis.run(steps=frames, interval=40)
+    vis.run(steps=frames, interval=1)
