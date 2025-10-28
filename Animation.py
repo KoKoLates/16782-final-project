@@ -191,5 +191,5 @@ ani = animation.FuncAnimation(fig,
                               blit=True)
 
 # save~~~~
-ani.save('Signal_saturated.gif', writer='pillow', fps=1000/interval)
+# ani.save('Signal_saturated.gif', writer='pillow', fps=1000/interval)
 plt.close(fig)
