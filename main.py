@@ -1,3 +1,4 @@
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches
@@ -277,6 +278,11 @@ class Visualizer:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--save', action='store_true', help="Enable gif save")
+    args = parser.parse_args()
+
+
     world = World(resolution=200)
     
     world.add_obstacle(Obstacle((4, 6), 4.0, 1.0, 30.0, 0.1))
@@ -298,5 +304,4 @@ if __name__ == "__main__":
     vis = Visualizer(world, fps=25)
     vis.setup()
     
-    vis.run(steps=frames, interval=40, save=True)
-    # vis.run(steps=frames, interval=40, save=False)
+    vis.run(steps=frames, interval=40, save=args.save)
