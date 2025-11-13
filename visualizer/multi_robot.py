@@ -270,7 +270,7 @@ class Visualizer:
             repeat=False
         )
         if save:
-            output_path = "./assets/Multi_signal_and_obstacles.gif"
+            output_path = "../assets/Multi_signal_and_obstacles.gif"
             ani.save(output_path, writer='pillow', fps=self.fps, dpi=150)
             print("Done")
         else:
