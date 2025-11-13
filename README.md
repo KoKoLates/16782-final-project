@@ -1,1 +1,1 @@
-# 16782-final-project
+# Multi-Robot Planning for Communication Coverage Optimization
