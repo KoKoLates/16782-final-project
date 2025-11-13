@@ -1,0 +1,5 @@
+GridSize: 20,20
+RobotNum: 3
+Obstacle: 
+    1, 1, 1, 1, 0
+    
