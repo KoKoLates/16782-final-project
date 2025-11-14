@@ -1,6 +1,6 @@
 
 class CoverageOptimizer:
-    def __init__(self, grid, obstacles):
+    def __init__(self, env):
         ...
 
     def process(self):

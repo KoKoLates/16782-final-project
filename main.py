@@ -8,11 +8,11 @@ from visualizer import Visualizer
 if __name__ == "__main__":
     env = Env("example.txt")
 
-    cov_opt = CoverageOptimizer(env.grid(), env.obstacles())
+    cov_opt = CoverageOptimizer(env)
     targets = cov_opt.process()
 
-    planner = Planner()
-    paths = planner.process(targets)
+    planner = Planner(env)
+    paths = planner.process()
 
     viz = Visualizer(env)
     viz.plot(paths)
