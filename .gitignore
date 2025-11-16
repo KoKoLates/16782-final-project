@@ -209,3 +209,4 @@ __marimo__/
 # Project-Wise
 .vscode/
 cache/
+test.py
