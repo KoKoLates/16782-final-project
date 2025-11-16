@@ -35,7 +35,7 @@ class Planner():
         return swap_state in constraints_list and prev_swap_state in constraints_list
 
     @staticmethod
-    def heuristic(pos: Tuple[int, int], goal: Tuple[int, int]) -> int:
+    def heuristic(pos: Tuple[int, int], goal: Tuple[int, int]) -> float:
         dx = abs(pos[0] - goal[0])
         dy = abs(pos[1] - goal[1])
         
