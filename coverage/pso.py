@@ -26,13 +26,14 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
             for _ in range(particle_count)
         ]
 
-        self.global_best_position = [None] * robots_number
+        self.global_best_position = [None] * self.env.robots_number
         self.global_best_cost = float('inf')
 
     def evaluate(self, positions: List[Tuple[float,float]]) -> float:
-        cost = 0
-        ...
-        return cost
+        return random.random()
+        # cost = 0
+        # ...
+        # return cost
 
     def update_particle(self, particle: Particle):
         new_positions = []
