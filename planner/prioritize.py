@@ -8,12 +8,13 @@ class PrioritizedPlanner(Planner):
     def __init__(self, env: Env, priority_mode: str = "default"):
         super().__init__(env)
         self.priority_mode = priority_mode
-        print(f"PP-Priority Mode: {self.priority_mode}")
+        print(f"Priority Mode: {self.priority_mode}\n")
+
 
     def _get_planning_order(self, goals: List[Tuple[int, int]]) -> List[int]:
         num_robots = len(self.starts)
         indices = list(range(num_robots)) 
-        station_pos = (0, 0) 
+        station_pos = self.starts[0]
 
         if self.priority_mode == "random":
             random.shuffle(indices)
@@ -34,7 +35,6 @@ class PrioritizedPlanner(Planner):
             return indices
             
         else: 
-            print(" default")
             return indices
 
     def process(self, goals: List[Tuple[int, int]]) -> List[Path]:
@@ -45,11 +45,11 @@ class PrioritizedPlanner(Planner):
         all_paths: List[Path] = [None] * len(self.starts)
         reservation: Set[State] = set()
         planning_order = self._get_planning_order(goals)
-        
+
         for i in planning_order:
             start_pos = self.starts[i]
             goal_pos = goals[i]
-            
+
             path = self.state_time_a_star(
                 start_pos,
                 goal_pos,
@@ -68,9 +68,10 @@ class PrioritizedPlanner(Planner):
                 reservation.add(state)
             
             last_state = path[-1]
-            max_time = 400 # weird
+            max_time = 200
             for t in range(last_state.t + 1, max_time + 1):
                 reservation.add(State(t, last_state.x, last_state.y))
+            print(f"Success for Robot {i}.")
 
         print("Prioritized Planning SUCCESS.")
         return all_paths
