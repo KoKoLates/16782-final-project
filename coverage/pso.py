@@ -31,16 +31,16 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
         self.global_best_cost = float('inf')
     
     def cost_obstacle(self, positions):
-        cost = 0
+        cost_obs = 0
         for (x, y) in positions:
             if self.env.is_obstacle(int(x), int(y)):
-                cost += 1e9
-        return cost
+                cost_obs += 1e9
+        return cost_obs
     
     def cost_connectivity(self, positions):
         tower = (self.env.w / 2, self.env.h / 2)
-        tower_range = 3.0
-        robot_range = 3.0
+        tower_range = 5.0
+        robot_range = 5.0
 
         n = len(positions)
         connected = [False] * n
@@ -62,18 +62,92 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
                     connected[j] = True
                     queue.append(j)
 
-        penalty = 0
+        cost_connect = 0
         for ok in connected:
             if not ok:
-                penalty += 1e5
+                cost_connect += 1e5
 
-        return penalty
+        return cost_connect
+    
+    def ray_blocked(self, x1, y1, x2, y2):
+        x1, y1 = int(x1), int(y1)
+        x2, y2 = int(x2), int(y2)
+
+        dx = abs(x2 - x1)
+        dy = abs(y2 - y1)
+        x, y = x1, y1
+
+        sx = 1 if x2 > x1 else -1
+        sy = 1 if y2 > y1 else -1
+
+        if dx > dy:
+            err = dx / 2.0
+            while x != x2:
+                if self.env.is_obstacle(x, y):
+                    return True
+                err -= dy
+                if err < 0:
+                    y += sy
+                    err += dx
+                x += sx
+        else:
+            err = dy / 2.0
+            while y != y2:
+                if self.env.is_obstacle(x, y):
+                    return True
+                err -= dx
+                if err < 0:
+                    x += sx
+                    err += dy
+                y += sy
+
+        return False
+
+    def cost_coverage(self, positions):
+        R = 5.0
+        sigma = 2.5
+        threshold = 0.2
+        max_signal = 1.0
+
+        covered_cells = 0
+
+        for x in range(self.env.w):
+            for y in range(self.env.h):
+
+                if self.env.is_obstacle(x, y):
+                    continue
+
+                total_signal = 0.0
+
+                for (rx, ry) in positions:
+                    d = math.dist((rx, ry), (x, y))
+
+                    if d > R:
+                        continue
+
+                    s = math.exp(-(d*d) / (2 * sigma * sigma))
+
+                    if self.ray_blocked(rx, ry, x, y):
+                        s *= 0.5
+
+                    total_signal += s
+                
+                if total_signal > max_signal:
+                    total_signal = max_signal
+
+                if total_signal >= threshold:
+                    covered_cells += 1
+
+        max_cells = self.env.w * self.env.h
+        cost_cover = max_cells - covered_cells
+
+        return cost_cover
 
     def evaluate(self, positions: List[Tuple[float,float]]) -> float:
         cost  = 0
         cost += self.cost_obstacle(positions)
         cost += self.cost_connectivity(positions)
-        # cost += self.cost_coverage(positions)
+        cost += self.cost_coverage(positions)
         return cost
 
     def update_particle(self, particle: Particle):
@@ -119,7 +193,7 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
         self.global_best_cost = self.evaluate(self.global_best_position)
         history_global_best_cost = self.global_best_cost
         stall = 0
-        epsilon = 1e-6
+        epsilon = 1
         patience = 10
 
         for iteration in range(self.max_iter):
