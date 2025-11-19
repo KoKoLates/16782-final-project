@@ -5,7 +5,6 @@ from core import Env
 from typing import List, Tuple  
 from dataclasses import dataclass
 
-
 # ga parameter setting
 @dataclass
 class GAParams:
@@ -13,9 +12,13 @@ class GAParams:
     generations: int = 100      # Iterations
     mutation: float = 0.1 
 
-    signal_range: float = 20.0  # Signal radius
-    gain: float = 1.0           # Maximum signal strength
-    threshold: float = 0.05     # Threshold for valid connectivity
+    signal_range: float = 10.0  # Signal radius
+    gain: float = 10.0          # Maximum signal strength
+    threshold: float = 1        # Threshold for valid connectivity
+
+    # set robot gain and station gain
+    robot_gain: float = 4.0
+    station_gain: float = 10.0
 
     connectivity_reward: float = 1000.0 # Bonus for picking up lost robot
     
@@ -75,11 +78,10 @@ class GeneticAlgorithm:
                 self.mutate(c2)
                 
                 new_population.extend([c1, c2])
-            
-            # Trim 
+
             population = new_population[:self.params.pop_size]
 
-        # print(f"GA: Evolution complete. Best Fitness: {chosen_fitness:.2f}")
+        print(f"GA: Evolution complete. Best Fitness: {chosen_fitness:.2f}")
         
         if chosen_solution is None:
             return population[0]
@@ -223,6 +225,7 @@ class GeneticAlgorithm:
         signal_map = np.clip(signal_map, 0, self.params.gain)
 
         coverage_score = float(np.sum(signal_map))
+        # print(f"Fitness Calculation: Coverage Score = {coverage_score:.2f}, Bonus = {bonus:.2f}, Total = {coverage_score + bonus:.2f}")
 
         return coverage_score + bonus
 
@@ -248,8 +251,3 @@ class GeneticAlgorithm:
                     ind[idx] = (nx, ny)
                     break
 
-# 有疊加要怎加？(try to lower the coomplexity)
-'''
-先計算自身的 看有沒有過threshold
-沒有在try看看疊加隔壁機器人嘛
-'''
