@@ -2,6 +2,7 @@ import os
 import numpy as np
 
 from typing import List, Tuple
+from matplotlib.path import Path
 
 
 class Env:
@@ -56,8 +57,10 @@ class Env:
 
         for i in range(min_x, max_x + 1):
             for j in range(min_y, max_y + 1):
-                if Env.point_in_polygon(i + 0.5, j + 0.5, poly):
-                    self.map[i, j] = 1
+                for dx in (0.0, 0.5, 1.0):
+                    for dy in (0.0, 0.5, 1.0):
+                        if Env.point_in_polygon(i + dx, j + dy, poly):
+                            self.map[i, j] = 1
 
     @staticmethod
     def rotate(x, y, w, h, theta):
