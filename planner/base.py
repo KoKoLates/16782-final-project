@@ -11,7 +11,10 @@ COST_DIAGONAL = math.sqrt(2)
 class Planner():
     def __init__(self, env: Env):
         self.env = env
-        self.starts = [(0, 0) for _ in range(self.env.robots_number)]
+        self.mid_x = self.env.w // 2
+        self.mid_y = self.env.h // 2
+        
+        self.starts = [(self.mid_x, self.mid_y) for _ in range(self.env.robots_number)]
 
     
     def process(self, goals: List[Tuple[int, int]]) -> List[Path]:
@@ -33,6 +36,25 @@ class Planner():
         swap_state = State(t=neighbor_state.t, x=current_state.x, y=current_state.y)
         prev_swap_state = State(t=current_state.t, x=neighbor_state.x, y=neighbor_state.y)
         return swap_state in constraints_list and prev_swap_state in constraints_list
+
+    @staticmethod
+    def check_corner_cutting(current: Tuple[int, int], next: Tuple[int, int], env: Env) -> bool:
+        cx, cy = current
+        nx, ny = next
+        
+        dx = nx - cx
+        dy = ny - cy
+            
+        # neighbor 1
+        if env.is_obstacle(cx + dx, cy):
+            return True
+            
+        # neighbor 2
+        if env.is_obstacle(cx, cy + dy):
+            return True
+            
+        return False
+
 
     @staticmethod
     def heuristic(pos: Tuple[int, int], goal: Tuple[int, int]) -> float:
@@ -93,6 +115,10 @@ class Planner():
                 if not Planner.is_valid_location(neighbor_x, neighbor_y, env):
                     continue
                 
+                if dx != 0 and dy != 0:
+                    if Planner.check_corner_cutting((current_state.x, current_state.y), (neighbor_x, neighbor_y), env):
+                        continue
+         
                 if check_collisions:
                     if Planner.check_vertex_conflict(neighbor_state, constraints_list):
                         continue
