@@ -38,6 +38,25 @@ class Planner():
         return swap_state in constraints_list and prev_swap_state in constraints_list
 
     @staticmethod
+    def check_corner_cutting(current: Tuple[int, int], next: Tuple[int, int], env: Env) -> bool:
+        cx, cy = current
+        nx, ny = next
+        
+        dx = nx - cx
+        dy = ny - cy
+            
+        # neighbor 1
+        if env.is_obstacle(cx + dx, cy):
+            return True
+            
+        # neighbor 2
+        if env.is_obstacle(cx, cy + dy):
+            return True
+            
+        return False
+
+
+    @staticmethod
     def heuristic(pos: Tuple[int, int], goal: Tuple[int, int]) -> float:
         dx = abs(pos[0] - goal[0])
         dy = abs(pos[1] - goal[1])
@@ -96,6 +115,10 @@ class Planner():
                 if not Planner.is_valid_location(neighbor_x, neighbor_y, env):
                     continue
                 
+                if dx != 0 and dy != 0:
+                    if Planner.check_corner_cutting((current_state.x, current_state.y), (neighbor_x, neighbor_y), env):
+                        continue
+         
                 if check_collisions:
                     if Planner.check_vertex_conflict(neighbor_state, constraints_list):
                         continue

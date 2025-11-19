@@ -1,92 +1,95 @@
 import os
 import numpy as np
 
+from typing import List, Tuple
+from matplotlib.path import Path
+
 
 class Env:
-    def __init__(self, file_path):
+    def __init__(self, file_path: str):
         if not os.path.exists(file_path):
             raise FileNotFoundError(f'File not found: {file_path}')
         
-        self.num = 0
         self.w, self.h = 0, 0
-        self.obstacles = []
+        self.robot_num = 0
+        self.obstacles: List = []
 
-        self._load(file_path)
+        self._parse_env_from_file(file_path)
+        self._build_occupancy_map()
 
-        self.map = np.zeros((self.w, self.h), dtype=np.int8)
-        for poly in self.obstacles:
-            xs = [p[0] for p in poly]
-            ys = [p[1] for p in poly]
-
-            min_x, max_x = int(min(xs)), int(max(xs))
-            min_y, max_y = int(min(ys)), int(max(ys))
-            min_x = max(min_x, 0)
-            min_y = max(min_y, 0)
-            max_x = min(max_x, self.w - 1)
-            max_y = min(max_y, self.h - 1)
-
-            for i in range(min_x, max_x + 1):
-                for j in range(min_y, max_y + 1):
-                    if Env.inside(i + 0.5, j + 0.5, poly):
-                        self.map[i, j] = 1
-
-    def is_obstacle(self, x, y):
-        return self.map[x, y]
-    
     @property
-    def shape(self):
+    def shape(self) -> Tuple[int, int]:
         return self.w, self.h
     
     @property
-    def robots_number(self):
-        return self.num
-
-    def _load(self, file: str):
+    def robots_number(self) -> int:
+        return self.robot_num
+    
+    def is_obstacle(self, x: int, y: int) -> bool:
+        return bool(self.map[x, y])
+    
+    def _parse_env_from_file(self, file: str) -> None:
         with open(file, 'r') as f:
-            lines = [line.strip() for line in f.readlines() if line.strip()]
+            lines = [line.strip() for line in f if line.strip()]
 
         for line in lines:
             if line.startswith("grid_size"):
-                v = line.split(":")[1].strip()
-                self.w, self.h = map(int, v.split(","))
-
+                self.w, self.h = map(int, line.split(":")[1].split(","))
+            
             elif line.startswith("robot_num"):
-                v = line.split(":")[1].strip()
-                self.num = int(v)
-
-            elif line.startswith("obstacles"):
-                continue
+                self.robot_num = int(line.split(":")[1])
 
             elif line[0].isdigit():
-                x, y, w, h, theta = list(map(float, line.split(",")))
+                x, y, w, h, theta = map(float, line.split(","))
                 self.obstacles.append(Env.rotate(x, y, w, h, theta))
+
+    def _build_occupancy_map(self) -> np.ndarray:
+        self.map = np.zeros((self.w, self.h), dtype=np.uint8) 
+        for obs in self.obstacles:
+            self._fill(obs)
+
+    def _fill(self, poly):
+        xs = [p[0] for p in poly]
+        ys = [p[1] for p in poly]
+
+        min_x, max_x = max(int(min(xs)), 0), min(int(max(xs)), self.w - 1)
+        min_y, max_y = max(int(min(ys)), 0), min(int(max(ys)), self.h - 1)
+
+        for i in range(min_x, max_x + 1):
+            for j in range(min_y, max_y + 1):
+                for dx in (0.0, 0.5, 1.0):
+                    for dy in (0.0, 0.5, 1.0):
+                        if Env.point_in_polygon(i + dx, j + dy, poly):
+                            self.map[i, j] = 1
 
     @staticmethod
     def rotate(x, y, w, h, theta):
-        cx, cy = x + w / 2, y + h / 2
+        cx, cy = x, y
         theta = np.deg2rad(theta)
 
-        dx, dy = w / 2, h / 2
-        corner = [(-dx, -dy), (dx, -dy), (dx, dy), (-dx, dy)]
-
-        rect = []
-        for px, py in corner:
-            rx = cx + px * np.cos(theta) - py * np.sin(theta)
-            ry = cy + px * np.sin(theta) + py * np.cos(theta)
-            rect.append((rx, ry))
-
-        return rect
-    
+        corner = np.array([
+            [0, 0], [w, 0], [w, h], [0, h]
+        ])
+        R: np.ndarray = np.array([
+            [np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]
+        ])
+        return (corner @ R.T + np.array([cx, cy])).tolist()
+        
     @staticmethod
-    def inside(x, y, poly):
-        count: bool = False
-        for i in range(len(poly)):
+    def point_in_polygon(x, y, poly) -> bool:
+        inside: bool = False
+        length: int = len(poly)
+
+        for i in range(length):
             x1, y1 = poly[i]
-            x2, y2 = poly[(i + 1) % len(poly)]
+            x2, y2 = poly[(i + 1) % length]
 
             if y1 == y2: continue
 
-            if ((y1 > y != y2 > y)) and (x < (x2 - x1) * (y - y1) / (y2 - y1) + x1):
-                count = not count
-        
-        return count
+            condition_1 = (y1 > y) != (y2 > y)
+            condition_2 = x < ((x2 - x1) * (y - y1) / (y2 - y1) + x1)
+
+            if condition_1 and condition_2:
+                inside = not inside
+
+        return inside
