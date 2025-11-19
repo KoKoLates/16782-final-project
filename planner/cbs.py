@@ -9,8 +9,6 @@ from .node import State, Path, Constraint
 from .base import Planner
 
 
-# ----------------------- Constraint Tree Structures ----------------------- #
-
 @dataclass(order=True)
 class CTNode:
     # Cost will be used as the priority in the heap
@@ -21,7 +19,6 @@ class CTNode:
 
 @dataclass
 class Conflict:
-    """Represents a conflict between two robots."""
     robot_i: int
     robot_j: int
     time: int
@@ -35,14 +32,10 @@ class Conflict:
     pos_j_after: Tuple[int, int]
 
 
-# ---------------------------- CBS Planner --------------------------------- #
-
 class CBSPlanner(Planner):
     """
     Conflict-Based Search planner.
-
-    High-level search over a constraint tree (CT), low-level search is your
-    existing state-time A* (Planner.state_time_a_star).
+    High-level search over a constraint tree (CT), low-level search is A*
     """
 
     def __init__(self, env: Env, max_time: int = 100):
@@ -50,7 +43,6 @@ class CBSPlanner(Planner):
         self.max_time = max_time
         self.goals: List[Tuple[int, int]] = []
 
-    # ------------------------- Public entry point ------------------------- #
 
     def process(self, goals: List[Tuple[int, int]]) -> List[Path]:
         """
@@ -114,7 +106,6 @@ class CBSPlanner(Planner):
         # No solution found
         return []
 
-    # ----------------------------- CBS helpers ---------------------------- #
 
     @staticmethod
     def _get_state_at_time(path: Path, t: int) -> State:
@@ -229,7 +220,6 @@ class CBSPlanner(Planner):
     def _constraint_from_conflict(self, conflict: Conflict, robot_id: int) -> Constraint:
         """
         Turn a conflict into a single Constraint for the given robot.
-
         For a vertex conflict: forbid the robot from being at (x, y) at time t.
         For a swap conflict: forbid the robot from being at its "after" position
         at time t+1. (This is a simple way to break the swap.)
