@@ -1,8 +1,9 @@
+import matplotlib.cm as cm
 import matplotlib.pyplot as plt
+
+from matplotlib.patches import Circle
 from matplotlib.patches import Polygon
 from matplotlib.animation import FuncAnimation
-import matplotlib.cm as cm
-from matplotlib.patches import Circle
 
 from core import Env
 from planner import Path
@@ -13,6 +14,25 @@ class Visualizer:
     def __init__(self, env: Env):
         self.env = env
         self.w, self.h = env.shape
+
+    def plot_points(self, points: List[Tuple[int, int]]) -> None:
+        _, ax = self._prepare_ax()
+        cmap = cm.get_cmap("tab20", len(points))
+
+        ax.scatter(self.w / 2, self.h / 2, marker='x', color='gray', s=80, linewidths=2)
+        center_circle = Circle((self.w / 2, self.h / 2), 10, edgecolor='gray', fill=False, linewidth=1.5)
+        ax.add_patch(center_circle)
+
+
+        for i, p in enumerate(points):
+            x, y = p
+            ax.scatter(x, y, color=cmap(i), s=60, label=f'robot {i + 1}')
+
+            circle = Circle((x, y), radius=4, edgecolor=cmap(i), fill=False, linewidth=1.5)
+            ax.add_patch(circle)
+
+        # ax.legend()
+        plt.show()
 
     def _prepare_ax(self):
         fig, ax = plt.subplots(figsize=(8, 8))
@@ -29,18 +49,6 @@ class Visualizer:
 
         return fig, ax
 
-    def plot_points(self, points: List[Tuple[int, int]]):
-        fig, ax = self._prepare_ax()
-
-        cmap = cm.get_cmap("tab20", len(points))
-
-        for i, p in enumerate(points):
-            x, y = p
-            ax.scatter(x, y, color=cmap(i), s=60, label=f"P{i}")
-
-        ax.legend()
-        plt.show()
-
     def plot_paths(self, paths: List[Path]):
         fig, ax = self._prepare_ax()
 
@@ -51,7 +59,6 @@ class Visualizer:
             ys = [s.y for s in path]
             ax.plot(xs, ys, color=cmap(i), linewidth=2, label=f"Path {i}")
 
-        ax.legend()
         plt.show()
 
     def animate(self, paths: List[Path], interval: int = 200, file_name: str = "./cache/assets/animation.gif"):
