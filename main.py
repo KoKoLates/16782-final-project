@@ -1,18 +1,24 @@
+import argparse
 
 from core import Env
-from planner import Planner
-from coverage import CoverageOptimizer
+from planner import PrioritizedPlanner, CBSPlanner
+from coverage import ParticleSwarmOptimizer
 from visualizer import Visualizer
 
 
 if __name__ == "__main__":
-    env = Env("example.txt")
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-f', '--file', type=str, help='filepath to map file')
+    args = parser.parse_args()
 
-    cov_opt = CoverageOptimizer(env)
-    targets = cov_opt.process()
+    env = Env(args.file)
+    cov_opt = ParticleSwarmOptimizer(env)
 
-    planner = Planner(env)
-    paths = planner.process()
+    points = cov_opt.process()
+
+    planner1 = CBSPlanner(env)
+    paths = planner1.process(points)
 
     viz = Visualizer(env)
-    viz.plot(paths)
+    viz.animate(paths, interval=400, file_name="./cache/assets/animation.gif")
+    
