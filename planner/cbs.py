@@ -54,23 +54,22 @@ class CBSPlanner(Planner):
 
     def process(self, goals: List[Tuple[int, int]]) -> List[Path]:
         """
-        Main entry point called by the framework.
-
-        :param goals: list of goal positions, one per robot
-        :return: list of paths (one Path per robot). Empty list if no solution.
+        Main CBS planning method.
+        low level CBS A* to get initial paths for all robots
+        high level CBS loop to resolve conflicts
         """
         self.goals = goals
         num_robots = self.env.robots_number
 
-        # --- 1. Build root node: no constraints, shortest path for each robot ---
+        # --- 1. Low level CBS A* ---
+        # initialize root CT node with empty constraints sets, and path for each robot computed by A*
         root_constraints: List[Constraint] = []
         root_paths: List[Path] = []
-
+        print("stage 1")
         for robot_id in range(num_robots):
             start_pos = self.starts[robot_id]
             goal_pos = self.goals[robot_id]
 
-            # For root, this returns an empty set
             constraint_states = self._collect_constraint_states(root_constraints, robot_id)
 
             path = self.state_time_a_star(
@@ -82,7 +81,7 @@ class CBSPlanner(Planner):
                 max_time=self.max_time,
             )
             if path is None:
-                # No path even without constraints -> no solution for this setup
+                # No path found
                 return []
 
             root_paths.append(path)
@@ -93,19 +92,23 @@ class CBSPlanner(Planner):
         # --- 2. High-level CBS loop over CT nodes ---
         open_heap: List[CTNode] = []
         heapq.heappush(open_heap, root)
-
+        print("stage 2")
         while open_heap:
             node = heapq.heappop(open_heap)
-
+            # find earliest conflict for the existing robot paths
             conflict = self._find_conflict(node.paths)
+            print(conflict)
             if conflict is None:
                 # Conflict-free solution found
+                print("solution found")
                 return node.paths
 
             # Expand this node into children, each adding one constraint
             children = self._expand_node(node, conflict)
+            #print("node expanded")
             for child in children:
                 if child is not None:
+                    #print(child.paths)
                     heapq.heappush(open_heap, child)
 
         # No solution found
@@ -145,8 +148,11 @@ class CBSPlanner(Planner):
 
         # Check time steps 0..max_len (swap needs t and t+1)
         for t in range(max_len):
+            if (t == 0) :
+                continue
             for i in range(num_robots):
                 for j in range(i + 1, num_robots):
+                    # get state info for robots i and j at time t
                     si_t = self._get_state_at_time(paths[i], t)
                     sj_t = self._get_state_at_time(paths[j], t)
 
@@ -166,7 +172,7 @@ class CBSPlanner(Planner):
                         )
 
                     # For swap, need also t+1
-                    if t + 1 <= max_len:
+                    if t <= max_len - 1:
                         si_next = self._get_state_at_time(paths[i], t + 1)
                         sj_next = self._get_state_at_time(paths[j], t + 1)
 
@@ -188,7 +194,7 @@ class CBSPlanner(Planner):
                                 pos_i_after=(si_next.x, si_next.y),
                                 pos_j_after=(sj_next.x, sj_next.y),
                             )
-
+                        
         return None
 
     def _collect_constraint_states(
