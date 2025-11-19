@@ -57,7 +57,7 @@ class CBSPlanner(Planner):
         # initialize root CT node with empty constraints sets, and path for each robot computed by A*
         root_constraints: List[Constraint] = []
         root_paths: List[Path] = []
-        print("stage 1")
+        # print("stage 1")
         for robot_id in range(num_robots):
             start_pos = self.starts[robot_id]
             goal_pos = self.goals[robot_id]
@@ -84,15 +84,15 @@ class CBSPlanner(Planner):
         # --- 2. High-level CBS loop over CT nodes ---
         open_heap: List[CTNode] = []
         heapq.heappush(open_heap, root)
-        print("stage 2")
+        # print("stage 2")
         while open_heap:
             node = heapq.heappop(open_heap)
             # find earliest conflict for the existing robot paths
             conflict = self._find_conflict(node.paths)
-            print(conflict)
+            # print(conflict)
             if conflict is None:
                 # Conflict-free solution found
-                print("solution found")
+                # print("solution found")
                 return node.paths
 
             # Expand this node into children, each adding one constraint
