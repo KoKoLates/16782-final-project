@@ -53,7 +53,7 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
                 connected[i] = True
 
         if not roots:
-            return 1e6
+            return 1e6, connected
 
         queue = roots[:]
         while queue:
@@ -68,7 +68,7 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
             if not ok:
                 cost_connect += 1e5
 
-        return cost_connect
+        return cost_connect, connected
     
     def ray_blocked(self, x1, y1, x2, y2):
         x1, y1 = int(x1), int(y1)
@@ -104,7 +104,7 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
 
         return False
 
-    def cost_coverage(self, positions):
+    def cost_coverage(self, positions, connected):
         robot_signal_range = 10.0
         sigma = 5.0
         signal_threshold = 0.2
@@ -120,7 +120,10 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
 
                 total_signal = 0.0
 
-                for (rx, ry) in positions:
+                for i, (rx, ry) in enumerate(positions):
+                    if not connected[i]:
+                        continue
+
                     d = math.dist((rx, ry), (x, y))
 
                     if d > robot_signal_range:
@@ -145,11 +148,10 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
         return cost_cover
 
     def evaluate(self, positions: List[Tuple[float,float]]) -> float:
-        cost  = 0
-        cost += self.cost_obstacle(positions)
-        cost += self.cost_connectivity(positions)
-        cost += self.cost_coverage(positions)
-        return cost
+        cost_obs = self.cost_obstacle(positions)
+        cost_connect, connected = self.cost_connectivity(positions)
+        cost_cover = self.cost_coverage(positions, connected)
+        return cost_obs + cost_connect + cost_cover
 
     def update_particle(self, particle: Particle):
         new_positions = []
