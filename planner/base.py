@@ -11,7 +11,10 @@ COST_DIAGONAL = math.sqrt(2)
 class Planner():
     def __init__(self, env: Env):
         self.env = env
-        self.starts = [(0, 0) for _ in range(self.env.robots_number)]
+        self.mid_x = self.env.w // 2
+        self.mid_y = self.env.h // 2
+        
+        self.starts = [(self.mid_x, self.mid_y) for _ in range(self.env.robots_number)]
 
     
     def process(self, goals: List[Tuple[int, int]]) -> List[Path]:
