@@ -1,9 +1,10 @@
 import numpy as np
 import random
 import math
+from core import Env
 from typing import List, Tuple  
 from dataclasses import dataclass
-from core.env import Env
+
 
 # ga parameter setting
 @dataclass
@@ -193,7 +194,7 @@ class GeneticAlgorithm:
 
         # coverage cal
         signal_map = np.zeros((self.w, self.h))
-        r = self.template_radius
+        r = self.stamped_radius
         h, w = self.h, self.w
 
         # only consider connected robots
@@ -213,7 +214,7 @@ class GeneticAlgorithm:
             ty1 = ty0 + (y1 - y0)
             
             # Matrix Addition (Superposition)
-            signal_map[x0:x1, y0:y1] += self.precompute_signal_stamped[tx0:tx1, ty0:ty1]
+            signal_map[x0:x1, y0:y1] += self.signal_stamped[tx0:tx1, ty0:ty1]
 
         # Apply static mask to remove signal inside walls
         signal_map *= self.static_mask
@@ -238,7 +239,7 @@ class GeneticAlgorithm:
         return c1, c2
 
     def mutate(self, ind):
-        if random.random() < self.params.mutation_rate:
+        if random.random() < self.params.mutation:
             idx = random.randint(0, len(ind) - 1)
             for _ in range(10):
                 nx = random.randint(0, self.w - 1)
