@@ -1,4 +1,5 @@
 import random
+import math
 from typing import List, Tuple
 from core import Env
 from .base import CoverageOptimizer
@@ -8,7 +9,7 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
     def __init__(
         self, 
         env: Env, 
-        particle_count: int = 20,
+        particle_count: int = 50,
         max_iter: int = 100,
         omega: float = 0.7,
         c1: float = 1.4,
@@ -28,12 +29,52 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
 
         self.global_best_position = [None] * self.env.robots_number
         self.global_best_cost = float('inf')
+    
+    def cost_obstacle(self, positions):
+        cost = 0
+        for (x, y) in positions:
+            if self.env.is_obstacle(int(x), int(y)):
+                cost += 1e9
+        return cost
+    
+    def cost_connectivity(self, positions):
+        tower = (self.env.w / 2, self.env.h / 2)
+        tower_range = 3.0
+        robot_range = 3.0
+
+        n = len(positions)
+        connected = [False] * n
+
+        roots = []
+        for i, p in enumerate(positions):
+            if math.dist(p, tower) < tower_range:
+                roots.append(i)
+                connected[i] = True
+
+        if not roots:
+            return 1e6
+
+        queue = roots[:]
+        while queue:
+            i = queue.pop(0)
+            for j in range(n):
+                if not connected[j] and math.dist(positions[i], positions[j]) < robot_range:
+                    connected[j] = True
+                    queue.append(j)
+
+        penalty = 0
+        for ok in connected:
+            if not ok:
+                penalty += 1e5
+
+        return penalty
 
     def evaluate(self, positions: List[Tuple[float,float]]) -> float:
-        return random.random()
-        # cost = 0
-        # ...
-        # return cost
+        cost  = 0
+        cost += self.cost_obstacle(positions)
+        cost += self.cost_connectivity(positions)
+        # cost += self.cost_coverage(positions)
+        return cost
 
     def update_particle(self, particle: Particle):
         new_positions = []
@@ -76,6 +117,11 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
     def process(self) -> List[Tuple[int, int]]:
         self.global_best_position = list(self.particles[0].position)
         self.global_best_cost = self.evaluate(self.global_best_position)
+        history_global_best_cost = self.global_best_cost
+        stall = 0
+        epsilon = 1e-6
+        patience = 10
+
         for iteration in range(self.max_iter):
             for particle in self.particles:
                 cost = self.evaluate(particle.position)
@@ -87,10 +133,24 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
                 if cost < self.global_best_cost:
                     self.global_best_cost = cost
                     self.global_best_position = list(particle.position)
-            
+
             for particle in self.particles:
                 self.update_particle(particle)
 
+            delta_cost = abs(history_global_best_cost - self.global_best_cost)
+
+            if delta_cost < epsilon:
+                stall += 1
+            else:
+                stall = 0
+
+            if stall >= patience:
+                break
+
+            history_global_best_cost = self.global_best_cost
+        
+        print("Iteration Count:", iteration)
+        print("Final Best Cost:", self.global_best_cost)
         result = [(int(x), int(y)) for (x, y) in self.global_best_position]
         return result
         
