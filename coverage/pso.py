@@ -1,5 +1,6 @@
 import random
 import math
+import time
 from typing import List, Tuple
 from core import Env
 from .base import CoverageOptimizer
@@ -39,15 +40,15 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
     
     def cost_connectivity(self, positions):
         tower = (self.env.w / 2, self.env.h / 2)
-        tower_range = 5.0
-        robot_range = 5.0
+        tower_connect_range = 8.0
+        robot_connect_range = 8.0
 
         n = len(positions)
         connected = [False] * n
 
         roots = []
         for i, p in enumerate(positions):
-            if math.dist(p, tower) < tower_range:
+            if math.dist(p, tower) < tower_connect_range:
                 roots.append(i)
                 connected[i] = True
 
@@ -58,7 +59,7 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
         while queue:
             i = queue.pop(0)
             for j in range(n):
-                if not connected[j] and math.dist(positions[i], positions[j]) < robot_range:
+                if not connected[j] and math.dist(positions[i], positions[j]) < robot_connect_range:
                     connected[j] = True
                     queue.append(j)
 
@@ -104,9 +105,9 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
         return False
 
     def cost_coverage(self, positions):
-        R = 5.0
-        sigma = 2.5
-        threshold = 0.2
+        robot_signal_range = 10.0
+        sigma = 5.0
+        signal_threshold = 0.2
         max_signal = 1.0
 
         covered_cells = 0
@@ -122,7 +123,7 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
                 for (rx, ry) in positions:
                     d = math.dist((rx, ry), (x, y))
 
-                    if d > R:
+                    if d > robot_signal_range:
                         continue
 
                     s = math.exp(-(d*d) / (2 * sigma * sigma))
@@ -135,7 +136,7 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
                 if total_signal > max_signal:
                     total_signal = max_signal
 
-                if total_signal >= threshold:
+                if total_signal >= signal_threshold:
                     covered_cells += 1
 
         max_cells = self.env.w * self.env.h
@@ -196,6 +197,8 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
         epsilon = 1
         patience = 10
 
+        start_time = time.time()
+
         for iteration in range(self.max_iter):
             for particle in self.particles:
                 cost = self.evaluate(particle.position)
@@ -223,6 +226,8 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
 
             history_global_best_cost = self.global_best_cost
         
+        end_time = time.time()
+        print(f"Total time: {end_time - start_time:.4f} seconds")
         print("Iteration Count:", iteration)
         print("Final Best Cost:", self.global_best_cost)
         result = [(int(x), int(y)) for (x, y) in self.global_best_position]
