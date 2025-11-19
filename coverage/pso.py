@@ -1,6 +1,7 @@
 import random
 import math
 import time
+import numpy as np
 from typing import List, Tuple
 from core import Env
 from .base import CoverageOptimizer
@@ -24,7 +25,7 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
         self.c2 = c2
 
         self.particles = [
-            Particle(self.env.robots_number, env)
+            Particle(env)
             for _ in range(particle_count)
         ]
 
@@ -105,47 +106,43 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
         return False
 
     def cost_coverage(self, positions, connected):
+        w, h = self.env.w, self.env.h
         robot_signal_range = 10.0
         sigma = 5.0
-        signal_threshold = 0.2
+        threshold = 0.2
         max_signal = 1.0
 
-        covered_cells = 0
+        xs, ys = np.meshgrid(np.arange(w), np.arange(h), indexing='ij')
+        signal_map = np.zeros((w, h), dtype=np.float32)
 
-        for x in range(self.env.w):
-            for y in range(self.env.h):
+        for i, (rx, ry) in enumerate(positions):
+            if not connected[i]:
+                continue
+            
+            dx = xs - rx
+            dy = ys - ry
+            d = np.sqrt(dx*dx + dy*dy)
 
-                if self.env.is_obstacle(x, y):
-                    continue
+            within = (d <= robot_signal_range)
 
-                total_signal = 0.0
+            s = np.exp(-(d*d) / (2 * sigma * sigma))
+            s *= within
 
-                for i, (rx, ry) in enumerate(positions):
-                    if not connected[i]:
-                        continue
+            within_x, within_y = np.where(s > 0)
+            for x, y in zip(within_x, within_y):
+                if self.ray_blocked(rx, ry, x, y):
+                    s[x, y] *= 0.5
 
-                    d = math.dist((rx, ry), (x, y))
+            signal_map += s
 
-                    if d > robot_signal_range:
-                        continue
+        signal_map = np.minimum(signal_map, max_signal)
 
-                    s = math.exp(-(d*d) / (2 * sigma * sigma))
+        obstacle_mask = (self.env.map == 1)
+        signal_map[obstacle_mask] = 0
 
-                    if self.ray_blocked(rx, ry, x, y):
-                        s *= 0.5
-
-                    total_signal += s
-                
-                if total_signal > max_signal:
-                    total_signal = max_signal
-
-                if total_signal >= signal_threshold:
-                    covered_cells += 1
-
-        max_cells = self.env.w * self.env.h
-        cost_cover = max_cells - covered_cells
-
-        return cost_cover
+        covered = (signal_map >= threshold)
+        max_cells = w * h
+        return max_cells - covered.sum()
 
     def evaluate(self, positions: List[Tuple[float,float]]) -> float:
         cost_obs = self.cost_obstacle(positions)
