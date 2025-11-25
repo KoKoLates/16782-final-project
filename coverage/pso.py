@@ -15,7 +15,11 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
         max_iter: int = 100,
         omega: float = 0.7,
         c1: float = 1.4,
-        c2: float = 1.4
+        c2: float = 1.4,
+        tower_signal_range: int = 10,
+        robot_signal_range: int = 4,
+        cost_coverage_threshold: float = 1.0,
+        cost_coverage_max_signal: float = 10.0
     ):
         super().__init__(env)
         self.particle_count = particle_count
@@ -23,6 +27,10 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
         self.omega = omega
         self.c1 = c1
         self.c2 = c2
+        self.tower_signal_range = tower_signal_range
+        self.robot_signal_range = robot_signal_range
+        self.cost_coverage_threshold = cost_coverage_threshold
+        self.cost_coverage_max_signal = cost_coverage_max_signal
 
         self.particles = [
             Particle(env)
@@ -41,8 +49,8 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
     
     def cost_connectivity(self, positions):
         tower = (self.env.w / 2, self.env.h / 2)
-        tower_connect_range = 8.0
-        robot_connect_range = 8.0
+        tower_connect_range = self.tower_signal_range + self.robot_signal_range
+        robot_connect_range = self.robot_signal_range + self.robot_signal_range
 
         n = len(positions)
         connected = [False] * n
@@ -72,49 +80,55 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
         return cost_connect, connected
     
     def ray_blocked(self, x1, y1, x2, y2):
-        x1, y1 = int(x1), int(y1)
-        x2, y2 = int(x2), int(y2)
+        x1, y1 = float(x1), float(y1)
+        x2, y2 = float(x2), float(y2)
 
-        dx = abs(x2 - x1)
-        dy = abs(y2 - y1)
-        x, y = x1, y1
+        dx = x2 - x1
+        dy = y2 - y1
+        dist = math.hypot(dx, dy)
 
-        sx = 1 if x2 > x1 else -1
-        sy = 1 if y2 > y1 else -1
+        num_samples = int(dist)
 
-        if dx > dy:
-            err = dx / 2.0
-            while x != x2:
-                if self.env.is_obstacle(x, y):
-                    return True
-                err -= dy
-                if err < 0:
-                    y += sy
-                    err += dx
-                x += sx
-        else:
-            err = dy / 2.0
-            while y != y2:
-                if self.env.is_obstacle(x, y):
-                    return True
-                err -= dx
-                if err < 0:
-                    x += sx
-                    err += dy
-                y += sy
+        if num_samples == 0:
+            return False
+
+        stepx = dx / dist
+        stepy = dy / dist
+
+        for k in range(1, num_samples):
+            px = x1 + stepx * k
+            py = y1 + stepy * k
+
+            if self.env.is_obstacle(int(px), int(py)):
+                return True
 
         return False
 
     def cost_coverage(self, positions, connected):
         w, h = self.env.w, self.env.h
-        robot_signal_range = 10.0
-        sigma = 5.0
-        threshold = 0.2
-        max_signal = 1.0
+        sigma = self.robot_signal_range / 2
+        sigmat = self.tower_signal_range / 2
+        tower_x, tower_y = self.env.w / 2, self.env.h / 2
 
         xs, ys = np.meshgrid(np.arange(w), np.arange(h), indexing='ij')
         signal_map = np.zeros((w, h), dtype=np.float32)
 
+        # Tower
+        dxt = xs - tower_x
+        dyt = ys - tower_y
+        dt = np.sqrt(dxt*dxt + dyt*dyt)
+        withint = (dt <= self.tower_signal_range)
+        st = 10 * np.exp(-(dt*dt) / (2 * sigmat * sigmat))
+        st *= withint
+
+        within_xt, within_yt = np.where(st > 0)
+        for x, y in zip(within_xt, within_yt):
+            if self.ray_blocked(tower_x, tower_y, x, y):
+                st[x, y] *= 0.5
+        
+        signal_map += st
+        
+        # Robot
         for i, (rx, ry) in enumerate(positions):
             if not connected[i]:
                 continue
@@ -123,9 +137,9 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
             dy = ys - ry
             d = np.sqrt(dx*dx + dy*dy)
 
-            within = (d <= robot_signal_range)
+            within = (d <= self.robot_signal_range)
 
-            s = np.exp(-(d*d) / (2 * sigma * sigma))
+            s = 10 * np.exp(-(d*d) / (2 * sigma * sigma))
             s *= within
 
             within_x, within_y = np.where(s > 0)
@@ -135,12 +149,12 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
 
             signal_map += s
 
-        signal_map = np.minimum(signal_map, max_signal)
+        signal_map = np.minimum(signal_map, self.cost_coverage_max_signal)
 
         obstacle_mask = (self.env.map == 1)
         signal_map[obstacle_mask] = 0
 
-        covered = (signal_map >= threshold)
+        covered = (signal_map >= self.cost_coverage_threshold)
         max_cells = w * h
         return max_cells - covered.sum()
 
