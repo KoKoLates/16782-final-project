@@ -1,22 +1,19 @@
 import numpy as np
 import random
 import math
-import time
 from core import Env
 from typing import List, Tuple
 from dataclasses import dataclass
 from numba import jit
 
-
 @jit(nopython=True)
-def obstacle_block(x1, y1, x2, y2, map_data):
+def jit_obstacle_block(x1, y1, x2, y2, map_data):
     dx = x2 - x1
     dy = y2 - y1
     dist = math.sqrt(dx*dx + dy*dy)
     num_samples = int(dist)
     
-    if num_samples == 0: 
-        return False
+    if num_samples == 0: return False
     
     stepx = dx / dist
     stepy = dy / dist
@@ -26,97 +23,141 @@ def obstacle_block(x1, y1, x2, y2, map_data):
         py = int(y1 + stepy * k)
         if px < 0 or py < 0 or px >= map_data.shape[0] or py >= map_data.shape[1]:
             continue
-
         if map_data[px, py] == 1:
             return True
-            
     return False
 
 @jit(nopython=True)
-def lap_signal(signal_map, map_data, cx, cy, radius, gain):
+def jit_add_signal(signal_map, map_data, cx, cy, radius, gain):
     w, h = signal_map.shape
-    
     x_min = max(0, int(cx - radius))
     x_max = min(w, int(cx + radius + 1))
     y_min = max(0, int(cy - radius))
     y_max = min(h, int(cy + radius + 1))
     
-    if x_max <= x_min or y_max <= y_min:
-        return
+    if x_max <= x_min or y_max <= y_min: return
 
     sigma2 = 2.0 * (radius / 2.0)**2
     
     for i in range(x_min, x_max):
         for j in range(y_min, y_max):
             dist_sq = (i - cx)**2 + (j - cy)**2
-            
             if dist_sq <= radius**2:
                 val = gain * math.exp(-dist_sq / sigma2)
-                
-                if obstacle_block(cx, cy, i, j, map_data):
+                if jit_obstacle_block(cx, cy, i, j, map_data):
                     val *= 0.5
-                
                 signal_map[i, j] += val
 
 @jit(nopython=True)
-def cal_coverage(map_data, positions, connected, tower_pos, 
+def jit_calculate_coverage(map_data, positions, connected, tower_pos, 
                            tower_gain, robot_gain, signal_max, signal_threshold):
     w, h = map_data.shape
     signal_map = np.zeros((w, h), dtype=np.float32)
     
-    lap_signal(signal_map, map_data, tower_pos[0], tower_pos[1], tower_gain, 10.0)
+    # Tower
+    jit_add_signal(signal_map, map_data, tower_pos[0], tower_pos[1], tower_gain, 10.0)
     
+    # Robot
     for k in range(len(positions)):
         if connected[k]:
-            rx = positions[k][0]
-            ry = positions[k][1]
-            lap_signal(signal_map, map_data, rx, ry, robot_gain, 10.0)
+            jit_add_signal(signal_map, map_data, positions[k][0], positions[k][1], robot_gain, 10.0)
             
+    # Count Uncovered
     covered_count = 0
     for i in range(w):
         for j in range(h):
             if map_data[i, j] == 1:
-                signal_map[i, j] = 0.0
+                signal_map[i, j] = 0.0 
             else:
-                if signal_map[i, j] > signal_max:
-                    signal_map[i, j] = signal_max
-                
-                if signal_map[i, j] >= signal_threshold:
-                    covered_count += 1
+                if signal_map[i, j] > signal_max: signal_map[i, j] = signal_max
+                if signal_map[i, j] >= signal_threshold: covered_count += 1
                     
     return (w * h) - covered_count
 
+@jit(nopython=True)
+def jit_bfs_distance_map(map_data, start_x, start_y):
+    w, h = map_data.shape
+    dist_map = np.full((w, h), -1, dtype=np.int32)
+    queue = np.zeros((w * h, 2), dtype=np.int32)
+    
+    head = 0
+    tail = 0
+    
+    # Init start
+    if map_data[start_x, start_y] == 0:
+        dist_map[start_x, start_y] = 0
+        queue[tail, 0] = start_x
+        queue[tail, 1] = start_y
+        tail += 1
+    
+    directions = np.array([[0, 1], [0, -1], [1, 0], [-1, 0]], dtype=np.int32)
+    
+    while head < tail:
+        cx, cy = queue[head]
+        head += 1
+        current_dist = dist_map[cx, cy]
+        
+        for i in range(4):
+            nx = cx + directions[i, 0]
+            ny = cy + directions[i, 1]
+            
+            if 0 <= nx < w and 0 <= ny < h:
+                if map_data[nx, ny] == 0 and dist_map[nx, ny] == -1:
+                    dist_map[nx, ny] = current_dist + 1
+                    queue[tail, 0] = nx
+                    queue[tail, 1] = ny
+                    tail += 1
+                    
+    return dist_map
+
+@jit(nopython=True)
+def jit_calculate_travel_cost(positions, dist_maps):
+    total_dist = 0.0
+    penalty = 0.0
+    
+    for i in range(len(positions)):
+        x = int(positions[i][0])
+        y = int(positions[i][1])
+        
+        d = dist_maps[i, x, y]
+        
+        if d == -1:
+            penalty += 1e6 
+        else:
+            total_dist += d
+            
+    return total_dist + penalty
+
+
 @dataclass
-class GAParams:
+class GAProParams:
     pop_size: int = 50          
     generations: int = 500 
     mutation: float = 0.1 
 
-    # Signal 
     tower_gain: int = 10
     robot_gain: int = 4
     signal_threshold: float = 1.0
     signal_max: float = 10.0
     
-    # Cost (align with PSO)
     w_obstacle: float = 1e9      
     w_hard_constraint: float = 1e7 
-    w_connect: float = 1e5       
+    w_connect: float = 1e5
+    w_travel: float = 1
+    # too big: overlap at station
     
-    # Init Strategy
     init_method: str = "connected" 
-    
-    # Early Stop
+
     patience: int = 10 
     early_stop: float = 1.0
 
-class GeneticAlgorithm:
-    def __init__(self, env: Env, params: GAParams = None):
+class GAPro:
+    def __init__(self, env: Env, params: GAProParams = None):
         self.env = env
-        self.num_robots = env.robots_number
+        self.num_robots = env.robots_number 
         self.w, self.h = env.shape
-        self.params = params if params else GAParams()
-        
+        self.params = params if params else GAProParams()
+
         if hasattr(self.env, 'map'):
             self.map_data = np.array(self.env.map, dtype=np.int32)
         else:
@@ -126,231 +167,188 @@ class GeneticAlgorithm:
                     if self.env.is_obstacle(x, y):
                         self.map_data[x, y] = 1
         
+        self.tower_pos = (float(self.w // 2), float(self.h // 2))
+        
+        tower_x, tower_y = int(self.tower_pos[0]), int(self.tower_pos[1])
+        
+        self.dist_maps = np.zeros((self.num_robots, self.w, self.h), dtype=np.int32)
+       
+        base_dist_map = jit_bfs_distance_map(self.map_data, tower_x, tower_y)
+        
+        for i in range(self.num_robots):
+            self.dist_maps[i] = base_dist_map
+
         margin = int(self.params.robot_gain)
         self.safe_x_range = (margin, self.w - margin - 1)
         self.safe_y_range = (margin, self.h - margin - 1)
-        self.tower_pos = (float(self.w // 2), float(self.h // 2)) 
-
+        
         try:
             threshold = max(1e-3, self.params.signal_threshold)
-            term = 14.0 / threshold 
-            if term <= 1.0:
-                physics_factor = 0.0
-            else:
-                physics_factor = math.sqrt(0.5 * math.log(term))
+            term = 20.0 / threshold
+            physics_factor = 0.0 if term <= 1.0 else math.sqrt(0.5 * math.log(term))
         except ValueError:
             physics_factor = 1.0
-
         self.connect_factor = min(1.0, physics_factor)
-    
-        tr_dist = (self.params.tower_gain + self.params.robot_gain) * self.connect_factor
-        self.tower_range_sq = tr_dist ** 2
         
-        rr_dist = (self.params.robot_gain + self.params.robot_gain) * self.connect_factor
-        self.robot_range_sq = rr_dist ** 2
+        self.tower_range_sq = ((self.params.tower_gain + self.params.robot_gain) * self.connect_factor) ** 2
+        self.robot_range_sq = ((self.params.robot_gain + self.params.robot_gain) * self.connect_factor) ** 2
 
     def get_valid_position(self, center: Tuple[int, int] = None, radius: int = None) -> Tuple[int, int]:
         min_x, max_x = self.safe_x_range
         min_y, max_y = self.safe_y_range
-        
-        attempts = 20 
-        
-        for _ in range(attempts):
+        for _ in range(20):
             if center and radius:
-                cx, cy = center
-                nx = cx + random.randint(-radius, radius)
-                ny = cy + random.randint(-radius, radius)
+                nx = center[0] + random.randint(-radius, radius)
+                ny = center[1] + random.randint(-radius, radius)
                 rx = max(min_x, min(max_x, nx))
                 ry = max(min_y, min(max_y, ny))
             else:
                 rx = random.randint(min_x, max_x)
                 ry = random.randint(min_y, max_y)
-
             if self.map_data[rx, ry] == 0:
                 return (rx, ry)
-        
         return (random.randint(min_x, max_x), random.randint(min_y, max_y))
-
+    
     def cobstacle(self, positions):
         cost = 0
         min_x, max_x = self.safe_x_range
         min_y, max_y = self.safe_y_range
-
-        for (x, y) in positions:
+        for i in range(len(positions)):
+            x, y = positions[i]
             if not (min_x <= x <= max_x and min_y <= y <= max_y):
-                 cost += self.params.w_obstacle
-                 continue
-            
-            ix, iy = int(x), int(y)
-            if self.map_data[ix, iy] == 1:
                 cost += self.params.w_obstacle
-
+                continue
+            if self.map_data[int(x), int(y)] == 1:
+                cost += self.params.w_obstacle
         return cost
     
     def cconnectivity(self, positions):
         n = len(positions)
         connected = [False] * n
         queue = []
-        
         tx, ty = self.tower_pos
         
         for i, (px, py) in enumerate(positions):
-            dist_sq = (px - tx)**2 + (py - ty)**2
-            if dist_sq < self.tower_range_sq:
+            if (px - tx)**2 + (py - ty)**2 < self.tower_range_sq:
                 connected[i] = True
                 queue.append(i)
-        
+                
         if not queue:
-            dist_penalty = 0
-            for px, py in positions:
-                dist_penalty += math.sqrt((px - tx)**2 + (py - ty)**2) * 100
-            return self.params.w_hard_constraint + dist_penalty, connected
+            dist_pen = sum(math.sqrt((p[0]-tx)**2 + (p[1]-ty)**2) * 100 for p in positions)
+            return self.params.w_hard_constraint + dist_pen, connected
 
         head = 0
         while head < len(queue):
-            curr_idx = queue[head]
-            head += 1
-            
-            cx, cy = positions[curr_idx]
-            
+            curr = queue[head]; head += 1
+            cx, cy = positions[curr]
             for j in range(n):
                 if not connected[j]:
-                    jx, jy = positions[j]
-                    dist_sq = (cx - jx)**2 + (cy - jy)**2
-                    if dist_sq < self.robot_range_sq:
+                    if (cx - positions[j][0])**2 + (cy - positions[j][1])**2 < self.robot_range_sq:
                         connected[j] = True
                         queue.append(j)
 
-        if all(connected):
-            return 0, connected
-            
+        if all(connected): return 0, connected
+        
         cost_connect = 0
         connected_indices = [i for i, c in enumerate(connected) if c]
         disconnected_indices = [i for i, c in enumerate(connected) if not c]
         
         for i in disconnected_indices:
             ix, iy = positions[i]
-            min_dist_sq = (ix - tx)**2 + (iy - ty)**2
-            
+            min_d = (ix - tx)**2 + (iy - ty)**2
             for j in connected_indices:
-                jx, jy = positions[j]
-                d_sq = (ix - jx)**2 + (iy - jy)**2
-                if d_sq < min_dist_sq:
-                    min_dist_sq = d_sq
+                d = (ix - positions[j][0])**2 + (iy - positions[j][1])**2
+                if d < min_d: min_d = d
+            cost_connect += self.params.w_connect + (math.sqrt(min_d) * 10)
             
-            cost_connect += self.params.w_connect + (math.sqrt(min_dist_sq) * 10)
-
         return cost_connect, connected
 
-    def ccoverage(self, positions, connected):
-        pos_arr = np.array(positions, dtype=np.float64)
-        conn_arr = np.array(connected, dtype=np.bool_)
-        
-        return cal_coverage(
-            self.map_data, 
-            pos_arr, 
-            conn_arr, 
-            self.tower_pos,
-            float(self.params.tower_gain), 
-            float(self.params.robot_gain), 
-            float(self.params.signal_max), 
-            float(self.params.signal_threshold)
-        )
+    def ctravel(self, positions):
+        pos_arr = np.array(positions, dtype=np.int32)
+        return jit_calculate_travel_cost(pos_arr, self.dist_maps) * self.params.w_travel
 
-    def cal_fitness(self, positions: List[Tuple[int, int]]) -> float:
+    def evaluate(self, positions: List[Tuple[int, int]]) -> float:
         float_positions = [(float(x), float(y)) for x, y in positions]
         
         cost_obs = self.cobstacle(float_positions)
-        if cost_obs > 0:
-            return cost_obs + self.params.w_hard_constraint
+        if cost_obs > 0: return cost_obs + self.params.w_hard_constraint
             
         cost_connect, connected = self.cconnectivity(float_positions)
-        if cost_connect > 0:
-             return cost_obs + cost_connect + self.params.w_hard_constraint
-
-        cost_cover = self.ccoverage(float_positions, connected)
+        if cost_connect > 0: return cost_obs + cost_connect + self.params.w_hard_constraint
         
-        return cost_obs + cost_connect + cost_cover
+        cost_travel = self.ctravel(positions)
+
+        pos_arr = np.array(float_positions, dtype=np.float64)
+        conn_arr = np.array(connected, dtype=np.bool_)
+        cost_cover = jit_calculate_coverage(
+            self.map_data, pos_arr, conn_arr, self.tower_pos,
+            float(self.params.tower_gain), float(self.params.robot_gain), 
+            float(self.params.signal_max), float(self.params.signal_threshold)
+        )
+        
+        return cost_obs + cost_connect + cost_travel + cost_cover
 
     def process(self) -> List[Tuple[int, int]]:
         population = self.init_population()
         chosen_solution = None
         chosen_cost = float('inf') 
+        stall = 0; best_hist = float('inf')
         
-        stall_count = 0
-        history_best_cost = float('inf')
-
         for gen in range(self.params.generations):
-            costs = [self.cal_fitness(ind) for ind in population]
+            costs = [self.evaluate(ind) for ind in population]
+            min_c = min(costs)
             
-            current_min_cost = min(costs)
-            if current_min_cost < chosen_cost:
-                chosen_cost = current_min_cost
-                chosen_solution = population[costs.index(current_min_cost)]
+            if min_c < chosen_cost:
+                chosen_cost = min_c
+                chosen_solution = population[costs.index(min_c)]
             
-            if (history_best_cost - chosen_cost) > self.params.early_stop:
-                stall_count = 0
-                history_best_cost = chosen_cost
-            else:
-                stall_count += 1
+            if (best_hist - chosen_cost) > self.params.early_stop:
+                stall = 0; best_hist = chosen_cost
+            else: stall += 1
                 
-            if stall_count >= self.params.patience:
-                print(f"Early stop at Gen {gen+1}, Best Cost: {chosen_cost:.2f}")
+            if stall >= self.params.patience:
+                print(f"Early stop at Gen {gen+1}, Cost: {chosen_cost:.2f}")
                 break
 
-            new_population = [chosen_solution] 
-            while len(new_population) < self.params.pop_size:
+            new_pop = [chosen_solution] 
+            while len(new_pop) < self.params.pop_size:
                 p1 = self.parent_select(population, costs)
                 p2 = self.parent_select(population, costs)
                 c1, c2 = self.crossover(p1, p2)
-                self.mutate(c1)
-                self.mutate(c2)
-                new_population.extend([c1, c2])
-            
-            population = new_population[:self.params.pop_size]
-
+                self.mutate(c1); self.mutate(c2)
+                new_pop.extend([c1, c2])
+            population = new_pop[:self.params.pop_size]
+        
         print(f"End. Best Cost: {chosen_cost:.2f}")
         return chosen_solution if chosen_solution else population[0]
 
     def init_population(self) -> List[List[Tuple[int, int]]]:
         pop = []
-        is_connected_init = (self.params.init_method == "connected")
-        factor = self.connect_factor if is_connected_init else 1.0
-        
-        if is_connected_init:
-            init_radius = int(self.params.tower_gain * 2 * factor) 
-            center = (int(self.tower_pos[0]), int(self.tower_pos[1]))  
-        else:
-            init_radius = None
-            center = None
+        is_conn = (self.params.init_method == "connected")
+        factor = self.connect_factor if is_conn else 1.0
+        init_r = int(self.params.tower_gain * 2 * factor) if is_conn else None
+        center = (int(self.tower_pos[0]), int(self.tower_pos[1])) if is_conn else None
 
         for _ in range(self.params.pop_size):
-            individual = []
+            ind = []
             for _ in range(self.num_robots):
-                pos = self.get_valid_position(center, init_radius)
-                individual.append(pos)
-            pop.append(individual)
+                ind.append(self.get_valid_position(center, init_r))
+            pop.append(ind)
         return pop
 
     def mutate(self, ind):
         if random.random() < self.params.mutation:
             idx = random.randint(0, len(ind) - 1)
-            if random.random() < 0.5:
-                # Local 
-                ind[idx] = self.get_valid_position(center=ind[idx], radius=2)
+            if random.random() < 0.7: 
+                ind[idx] = self.get_valid_position(center=ind[idx], radius=3)
             else:
-                # Global 
-                ind[idx] = self.get_valid_position()
+                ind[idx] = self.get_valid_position() 
 
     def parent_select(self, pop, scores, k=3):
-        indices = random.sample(range(len(pop)), k)
-        best_idx = min(indices, key=lambda i: scores[i])
-
-        return pop[best_idx]
+        idxs = random.sample(range(len(pop)), k)
+        return pop[min(idxs, key=lambda i: scores[i])]
     
     def crossover(self, p1, p2):
-        if len(p1) < 2: 
-            return list(p1), list(p2)
+        if len(p1) < 2: return list(p1), list(p2)
         pt = random.randint(1, len(p1) - 1)
-
         return p1[:pt] + p2[pt:], p2[:pt] + p1[pt:]
