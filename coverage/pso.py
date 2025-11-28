@@ -20,11 +20,11 @@ class ParticleSwarmOptimizer(CoverageOptimizer):
         robot_signal_range: int = 4,
         cost_coverage_threshold: float = 1.0,
         cost_coverage_max_signal: float = 10.0,
-        w_obstacle: float = 1e1,
-        w_hard_constraint: float = 1e1, 
-        w_connect: float = 1e0,
-        w_coverage: float = 1e2,
-        w_occluded: float = 1e3
+        w_obstacle: float = 1e3,
+        w_hard_constraint: float = 1e2, 
+        w_connect: float = 1e1,
+        w_coverage: float = 1e1,
+        w_occluded: float = 1e1
     ):
         super().__init__(env)
         self.particle_count = particle_count
