@@ -10,6 +10,7 @@ from matplotlib.collections import PathCollection
 from core import Env
 from planner import Path
 from typing import List, Tuple, Optional
+from collections import deque
 
 
 class Visualizer:
@@ -18,43 +19,24 @@ class Visualizer:
         self.w, self.h = env.shape
 
     def plot_points(self, points: List[Tuple[int, int]]) -> None:
-        _, ax = self._prepare_ax()
+        fig, ax = self._prepare_ax()
         cmap = cm.get_cmap("tab20", len(points))
+        center = (self.w / 2, self.h / 2)
 
-        ax.scatter(self.w / 2, self.h / 2, marker='x', color='gray', s=80, linewidths=2)
-        center_circle = Circle((self.w / 2, self.h / 2), 10, edgecolor='gray', fill=False, linewidth=1.5)
-        ax.add_patch(center_circle)
+        ax.scatter(*center, marker='x', color='gray', s=80, linewidths=2)
+        ax.add_patch(Circle(center, 10, edgecolor='gray', fill=False, linewidth=1.5))
 
+        for i, (x, y) in enumerate(points):
+            ax.scatter(x, y, color=cmap(i), s=60)
+            ax.add_patch(Circle((x, y), radius=4, edgecolor=cmap(i), fill=False, linewidth=1.5))
 
-        for i, p in enumerate(points):
-            x, y = p
-            ax.scatter(x, y, color=cmap(i), s=60, label=f'robot {i + 1}')
+        nodes, edges = self._compute_connectivity(points)
+        for i, j in edges:
+            x1, y1 = nodes[i]
+            x2, y2 = nodes[j]
+            ax.plot([x1, x2], [y1, y2], color='black', linewidth=1, alpha=0.5)
 
-            circle = Circle((x, y), radius=4, edgecolor=cmap(i), fill=False, linewidth=1.5)
-            ax.add_patch(circle)
-
-        # ax.legend()
         plt.show()
-
-    # def plot_points(self, points: List[Tuple[int, int]]) -> None:
-    #     fig, ax = self._prepare_ax()
-    #     cmap = cm.get_cmap("tab20", len(points))
-    #     center = (self.w / 2, self.h / 2)
-
-    #     ax.scatter(*center, marker='x', color='gray', s=80, linewidths=2)
-    #     ax.add_patch(Circle(center, 10, edgecolor='gray', fill=False, linewidth=1.5))
-
-    #     for i, (x, y) in enumerate(points):
-    #         ax.scatter(x, y, color=cmap(i), s=60)
-    #         ax.add_patch(Circle((x, y), radius=4, edgecolor=cmap(i), fill=False, linewidth=1.5))
-
-        # nodes, edges = self._compute_connectivity(points)
-        # for i, j in edges:
-        #     x1, y1 = nodes[i]
-        #     x2, y2 = nodes[j]
-        #     ax.plot([x1, x2], [y1, y2], color='black', linewidth=1, alpha=0.7)
-
-        # plt.show()
 
     def plot_paths(self, paths: List[Path]):
         _, ax = self._prepare_ax()
@@ -153,31 +135,33 @@ class Visualizer:
         return fig, ax
     
     def _compute_connectivity(self, points: List[Tuple[int, int]]):
-        center = (self.w / 2, self.h / 2)
+        cx, cy = self.w // 2, self.h // 2
+        center = (cx, cy)
+
         nodes = [center] + points
-        N = len(nodes)
+        N: int = len(nodes)
 
         graph = [[] for _ in range(N)]
-
         for i in range(1, N):
-            if np.hypot(nodes[i][0] - center[0], nodes[i][1] - center[1]) < 14:
+            if np.hypot(nodes[i][0] - cx, nodes[i][1] - cy) <= 14:
                 graph[0].append(i)
                 graph[i].append(0)
 
-
         for i in range(1, N):
             for j in range(i + 1, N):
-                if np.hypot(nodes[i][0] - nodes[j][0], nodes[i][1] - nodes[j][1]) < 8:
+                if np.hypot(nodes[i][0] - nodes[j][0], nodes[i][1] - nodes[j][1]) <= 8:
                     graph[i].append(j)
                     graph[j].append(i)
 
         visited = set()
-        queue = [0]
+        queue = deque([0])
+
         while queue:
-            u = queue.pop(0)
+            u = queue.popleft()
             if u in visited:
                 continue
             visited.add(u)
+
             for v in graph[u]:
                 if v not in visited:
                     queue.append(v)
