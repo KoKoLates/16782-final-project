@@ -30,6 +30,12 @@ class Env:
     def is_obstacle(self, x: int, y: int) -> bool:
         return self.map[x, y] >= 1e9
     
+    def is_reachable(self, x: int, y: int) -> bool:
+        if not (0 <= x < self.w and 0 <= y < self.h):
+            return False
+
+        return (self.map[x, y] < 1e5) and (self.map[x, y] >= 0)
+    
     def get_cost(self, x: int, y: int) -> float:
         if not (0 <= x < self.w and 0 <= y < self.h):
             raise IndexError(f"Coordinates ({x}, {y}) out of bounds")
