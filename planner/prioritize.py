@@ -8,8 +8,7 @@ class PrioritizedPlanner(Planner):
     def __init__(self, env: Env, priority_mode: str = "default"):
         super().__init__(env)
         self.priority_mode = priority_mode
-        print(f"Priority Mode: {self.priority_mode}\n")
-
+        # print(f"Priority Mode: {self.priority_mode}\n")
 
     def _get_planning_order(self, goals: List[Tuple[int, int]]) -> List[int]:
         num_robots = len(self.starts)
@@ -59,7 +58,7 @@ class PrioritizedPlanner(Planner):
             )
             
             if path is None:
-                print("failed to find path for all robots")
+                # print("failed to find path for all robots")
                 return [] 
             
             all_paths[i] = path
@@ -71,7 +70,7 @@ class PrioritizedPlanner(Planner):
             max_time = 200
             for t in range(last_state.t + 1, max_time + 1):
                 reservation.add(State(t, last_state.x, last_state.y))
-            print(f"Success for Robot {i}.")
+            # print(f"Success for Robot {i}.")
 
-        print("Prioritized Planning SUCCESS.")
+        # print("Prioritized Planning SUCCESS.")
         return all_paths
