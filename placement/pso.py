@@ -85,37 +85,50 @@ class ParticleSwarmOptimizer(Coverage):
         n = len(positions)
         connected = [False] * n
         queue = []
-        tx, ty = self.tower_pos
-        for i, (px, py) in enumerate(positions):
-            if (px - tx)**2 + (py - ty)**2 < self.tower_range_sq:
+        
+        tx, ty = int(round(self.tower_pos[0])), int(round(self.tower_pos[1]))
+        int_positions = [(int(round(x)), int(round(y))) for x, y in positions]
+
+        for i, (ix, iy) in enumerate(int_positions):
+            if (ix - tx)**2 + (iy - ty)**2 <= self.tower_range_sq:
                 connected[i] = True
                 queue.append(i)
+                
         if not queue:
-            dist_pen = sum(math.sqrt((p[0]-tx)**2 + (p[1]-ty)**2) * 100 for p in positions)
+            dist_pen = sum(math.sqrt((p[0]-self.tower_pos[0])**2 + (p[1]-self.tower_pos[1])**2) * 100 for p in positions)
             return self.params.w_hard_constraint + dist_pen, connected
-        
+
         head = 0
         while head < len(queue):
             curr = queue[head]; head += 1
-            cx, cy = positions[curr]
+            cx, cy = int_positions[curr] 
+            
             for j in range(n):
                 if not connected[j]:
-                    if (cx - positions[j][0])**2 + (cy - positions[j][1])**2 < self.robot_range_sq:
+                    jx, jy = int_positions[j] 
+                    
+                    if (cx - jx)**2 + (cy - jy)**2 <= self.robot_range_sq:
                         connected[j] = True
                         queue.append(j)
-        
+
         if all(connected): return 0, connected
         
         cost_connect = 0
         connected_indices = [i for i, c in enumerate(connected) if c]
         disconnected_indices = [i for i, c in enumerate(connected) if not c]
+        
+        tower_x_float, tower_y_float = self.tower_pos
+        
         for i in disconnected_indices:
-            ix, iy = positions[i]
-            min_d = (ix - tx)**2 + (iy - ty)**2
+            ix, iy = positions[i] 
+            min_d = (ix - tower_x_float)**2 + (iy - tower_y_float)**2
+            
             for j in connected_indices:
                 d = (ix - positions[j][0])**2 + (iy - positions[j][1])**2
                 if d < min_d: min_d = d
+            
             cost_connect += self.params.w_connect + (math.sqrt(min_d) * 10)
+            
         return cost_connect, connected
 
     def ccollision(self, positions):
@@ -203,4 +216,4 @@ class ParticleSwarmOptimizer(Coverage):
                 break
         
         print(f"PSO End. Best Cost: {self.global_best_cost:.2f}")
-        return [(int(x), int(y)) for (x, y) in self.global_best_position]
+        return [(int(round(x)), int(round(y))) for (x, y) in self.global_best_position]
