@@ -2,7 +2,7 @@ import argparse
 
 from core import Env
 from planner import PrioritizedPlanner, CBSPlanner
-from coverage import ParticleSwarmOptimizer
+from placement import ParticleSwarmOptimizer
 from visualizer import Visualizer
 
 
