@@ -1,7 +1,9 @@
-from .base import CoverageOptimizer
+from .base import Coverage
 from .pso import ParticleSwarmOptimizer
+# from .ga import GAPro
 
 __all__ = [
-    "CoverageOptimizer",
-    "ParticleSwarmOptimizer"
+    "Coverage",
+    "ParticleSwarmOptimizer",
+    # "GAPro"
 ]
