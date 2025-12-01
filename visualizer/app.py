@@ -22,6 +22,53 @@ from planner.cbs import CBSPlanner
 from planner.jss import JointAStarPlanner
 from visualizer import Visualizer as BaseNewVisualizer
 
+def run_coverage():
+    env = Env(map_path)
+    targets = []
+    cost = 0.0
+    config_summary = {
+        "Map": selected_map,
+        "Algorithm": cov_algo,
+        "Stage": "Coverage",
+        "Init Method": cov_init_method
+    }
+    
+    if cov_algo == "GA":
+        config_summary.update({
+            "Pop Size": ga_pop_size,
+            "Generations": ga_generations
+        })
+        ga_params = GAParams(
+            generations=ga_generations, 
+            pop_size=ga_pop_size, 
+            init_method=cov_init_method
+        )
+        ga = GA(env, params=ga_params)
+        targets = ga.process()
+        # Re-evaluate to get the cost for display
+        if targets:
+            cost = ga.evaluate(targets)
+        return env, targets, cost, config_summary
+        
+    elif cov_algo == "PSO":
+        config_summary.update({
+            "Particles": pso_particle_count,
+            "Max Iter": pso_max_iter,
+            "Repulsion": pso_repulsion
+        })
+        pso_params = PSOParams(
+            particle_count=pso_particle_count,
+            max_iter=pso_max_iter,
+            use_collision=pso_repulsion,
+            init_method=cov_init_method
+        )
+        pso = ParticleSwarmOptimizer(env, params=pso_params) 
+        targets = pso.process()
+        # Re-evaluate to get the cost for display
+        if targets:
+            cost = pso.evaluate(targets)
+        
+    return env, targets, cost, config_summary
 
 def get_available_maps():
     maps_dir = os.path.join(parent_dir, "maps")
@@ -129,18 +176,36 @@ cov_algo = None
 plan_algo = None
 priority_mode = "default"
 
+# Default values
+pso_particle_count = 100
+pso_max_iter = 100
+pso_repulsion = True
+cov_init_method = "connected"
+
+# GA Defaults
+ga_generations = 200
+ga_pop_size = 50
+
 st.sidebar.header("Algorithm Selection")
 if task_type in ["Coverage", "Both (Stage 1 + Stage 2)"]:
     st.sidebar.subheader("Stage 1: Coverage")
+    cov_init_method = st.sidebar.selectbox(
+        "Initialization Mode", 
+        ["connected", "random"], 
+        key="cov_init"
+    )
+    
     cov_algo = st.sidebar.selectbox("Coverage Algorithm", ["PSO", "GA"], key="cov")
     
-    with st.sidebar.expander(f"{cov_algo} Parameters"):
+    with st.sidebar.expander(f"{cov_algo} Parameters", expanded=True):
         if cov_algo == "PSO":
             pso_particle_count = st.slider("Particle Count", min_value=50, max_value=500, value=100)
             pso_max_iter = st.slider("Max Iterations", min_value=50, max_value=500, value=100)
+            pso_repulsion = st.checkbox("Enable Repulsion (Collision Avoidance)", value=True)
+            
         elif cov_algo == "GA":
-            st.number_input("Interations", value=100)
-            st.slider("Inertia (w)", 100, 300, 500)
+            ga_generations = st.slider("Max Iterations", min_value=50, max_value=500, value=200)
+            ga_pop_size = st.slider("Population Size", min_value=50, max_value=100, value=50)
 
 if task_type in ["Planner", "Both (Stage 1 + Stage 2)"]:
     st.sidebar.subheader("Stage 2: Planner")
@@ -161,85 +226,101 @@ if st.button("Run", type="primary"):
     st.info(status_msg)
     if task_type == "Coverage":
         with st.spinner("Simulating Coverage..."):
-            env = Env(map_path)
-            targets = []
-            
             start_time = time.time() 
-            
-            if cov_algo == "GA":
-                st.error("GA logic not yet implemented.")
-            elif cov_algo == "PSO":
-                pso_params = PSOParams(
-                    particle_count=pso_particle_count,
-                    max_iter=pso_max_iter
-                )
-                pso = ParticleSwarmOptimizer(env, params=pso_params) 
-                targets = pso.process()
-            
-            exec_time = time.time() - start_time 
-
+            env, targets, best_cost, config = run_coverage()
+            exec_time = time.time() - start_time
         if targets:
-            col1, col2 = st.columns([2, 2])
+            col1, col2 = st.columns([2, 1]) # Adjusted ratio for better text display
             
             with col1:
                 viz = StreamlitNewVisualizer(env)
                 fig = viz.get_points_fig(targets)
-                st.pyplot(fig, use_container_width=False)
+                st.pyplot(fig, use_container_width=True)
                 plt.close(fig)
             
             with col2:
-                st.subheader("Evaluation")
-                st.metric("Targets Found", len(targets))
-                st.metric("Compute Time", f"{exec_time:.4f} s")
+                st.subheader("Coverage Evaluation")
+                
+                # 1. Configuration
+                st.markdown("#### ⚙️ Configuration")
+                st.json(config, expanded=False)
+
+                # 2. Performance Metrics
+                st.markdown("#### 📊 Performance")
+                desired = env.robot_num
+                found = len(targets)
+                
+                # Robot Number
+                st.write(f"**Robot Number:** {found} / {desired}")
+                # Runtime
+                st.write(f"**Runtime:** {exec_time:.4f} s")
+                # Overall Cost
+                st.write(f"**Overall Cost:** {best_cost:.4f}")
+                
+                # 3. Target Positions
+                st.markdown("#### 📍 Targets Found")
+                # Format list for cleaner display
+                target_str = "\n".join([str(t) for t in targets])
+                st.text(target_str)
+
         else:
             st.error("No targets found.")
 
     elif task_type == "Planner":        
-        if not os.path.exists(map_path):
-            st.error(f"Can not find map file: {map_path}")
-        else:
-            env = Env(map_path)
-            num_robots = env.robot_num
-            st.info(f"Detected {num_robots} robots on the map.")
-            demo_targets = [(30,39), (37,36), (38,29), (38,22), (30,12), (12,20)]
-            if num_robots < len(demo_targets):
-                demo_targets = demo_targets[:num_robots]
-            
-            st.write(f"Planning for targets: {demo_targets}")
-            
-            paths = []
-            start_time = time.time()
-
-            with st.spinner("Planning Paths..."):
-                if plan_algo == "PP":
-                    planner = PrioritizedPlanner(env, priority_mode=priority_mode)
-                    paths = planner.process(demo_targets)
-                else:
-                    st.warning(f"{plan_algo} not implemented, showing empty.")
-            
-            exec_time = time.time() - start_time
-
-            if paths:
-                col1, col2 = st.columns([2, 2])
+        with st.spinner("Simulating Coverage..."):
+            if not os.path.exists(map_path):
+                st.error(f"Can not find map file: {map_path}")
+            else:
+                env = Env(map_path)
+                num_robots = env.robot_num
+                st.info(f"Detected {num_robots} robots on the map.")
+                demo_targets = [(30,39), (37,36), (38,29), (38,22), (30,12), (12,20)]
+                if num_robots < len(demo_targets):
+                    demo_targets = demo_targets[:num_robots]
                 
-                with col1:
-                    st.subheader("Animation")
-                    viz = StreamlitNewVisualizer(env)
-                    html_code = viz.get_animation_html(paths, interval=200)
-                    components.html(html_code, height=900, scrolling=True)
+                st.write(f"Planning for targets: {demo_targets}")
+                
+                paths = []
+                start_time = time.time()
 
-                with col2:
-                    st.subheader("Evaluation")
+                with st.spinner("Planning Paths..."):
+                    if plan_algo == "PP":
+                        planner = PrioritizedPlanner(env, priority_mode=priority_mode)
+                        paths = planner.process(demo_targets)
+                    elif plan_algo == "CBS":
+                        planner = CBSPlanner(env, max_time=100)
+                        paths = planner.process(demo_targets)
+                    elif plan_algo == "JSS":
+                        planner = JointAStarPlanner(env)
+                        paths = planner.process(demo_targets)
+                
+                exec_time = time.time() - start_time
+
+                if paths:
+                    col1, col2 = st.columns([3, 1])
                     
-                    total_steps = sum([len(p) for p in paths])
-                    makespan = max([len(p) for p in paths])
-                    avg_len = total_steps / len(paths)
+                    with col1:
+                        st.subheader("Animation")
+                        viz = StreamlitNewVisualizer(env)
+                        html_code = viz.get_animation_html(paths, interval=200)
+                        components.html(html_code, height=900, scrolling=True)
 
-                    st.metric("Success Rate", "100%")
-                    st.metric("Total Steps (Sum)", total_steps)
-                    st.metric("Makespan (Max)", makespan)
-                    st.metric("Avg Path Cost", f"{avg_len:.1f}")
-                    st.metric("Compute Time", f"{exec_time:.4f} s")
+                    with col2:
+                        st.subheader("Evaluation")
+                        st.markdown("**Configuration**")
+                        st.write(f"Algo: {plan_algo}")
+                        st.write(f"Mode: {priority_mode}")
+                        st.write(f"Map: {selected_map}")
+                        
+                        st.markdown("**Metrics**")
+                        total_steps = sum([len(p) for p in paths])
+                        makespan = max([len(p) for p in paths])
+                        avg_len = total_steps / len(paths)
+
+                        st.write(f"Total Steps: {total_steps}")
+                        st.write(f"Makespan: {makespan}")
+                        st.write(f"Avg Cost: {avg_len:.1f}")
+                        st.write(f"Time: {exec_time:.4f} s")
 
     elif task_type == "Both (Stage 1 + Stage 2)":
         with st.spinner("Simulating Integrated System..."):
@@ -255,6 +336,26 @@ if st.button("Run", type="primary"):
             world.add_agent(Robot("Robot A", path1, 4.0, 0.7, 'b'))
             world.add_agent(Robot("Robot B", path2, 4.0, 0.7, 'c'))
 
+            start_time = time.time()
+            env, targets, best_cost, config = run_coverage()
+            cov_time = time.time() - start_time
+
+            paths = []
+            if targets:
+                with st.spinner("Planning Paths..."):
+                    if plan_algo == "PP":
+                        planner = PrioritizedPlanner(env, priority_mode=priority_mode)
+                        paths = planner.process(targets)
+                    elif plan_algo == "CBS":
+                        planner = CBSPlanner(env, max_time=100)
+                        paths = planner.process(targets)
+                    elif plan_algo == "JSS":
+                        planner = JointAStarPlanner(env)
+                        paths = planner.process(targets)
+            
+            total_time = time.time() - start_time
+
+
             col1, col2 = st.columns([2, 2])
             
             with col1:
@@ -264,10 +365,42 @@ if st.button("Run", type="primary"):
                 html_code = vis.get_animation_html(steps=frames, interval=100)
                 components.html(html_code, height=900, scrolling=True)
                 plt.close(vis.fig)
+                
+                viz = StreamlitNewVisualizer(env)
+                fig = viz.get_points_fig(targets)
+                st.pyplot(fig, use_container_width=True)
+                plt.close(fig)
 
             with col2:
-                st.subheader("System Metrics")
-                st.metric("Signal Coverage", "87%", "+2%")
-                st.metric("Connectivity", "Stable")
-                st.metric("Mission Time", "4.2s")
-                st.metric("Active Robots", "2")
+                st.subheader("Coverage Evaluation")
+                    
+                # 1. Configuration
+                st.markdown("#### ⚙️ Configuration")
+                st.json(config, expanded=False)
+
+                # 2. Coverage Metrics
+                st.markdown("#### 📊 Coverage Results")
+                st.write(f"**Robots:** {len(targets)} / {env.robot_num}")
+                st.write(f"**Cost:** {best_cost:.2f}")
+                st.write(f"**Stage 1 Time:** {cov_time:.4f} s")
+
+                # 3. Planner Metrics
+                st.markdown("#### 🚀 Planner Results")
+                total_steps = sum([len(p) for p in paths])
+                st.write(f"**Total Steps:** {total_steps}")
+                st.write(f"**Total Time:** {total_time:.4f} s")
+                
+                # 4. Targets
+                st.markdown("#### 📍 Targets Found")
+                # Format list for cleaner display
+                target_str = "\n".join([str(t) for t in targets])
+                st.text(target_str)
+
+               
+
+                st.subheader("Integrated Simulation")
+                viz = StreamlitNewVisualizer(env)
+                html_code = viz.get_animation_html(paths, interval=200)
+                components.html(html_code, height=900, scrolling=True)
+
+               
