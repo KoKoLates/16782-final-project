@@ -38,6 +38,27 @@ def get_valid_position_on_map(map_data, safe_range_x, safe_range_y, center=None,
         if center and current_radius:
             current_radius *= 1.1
 
+class Metric:
+    def __init__(self):
+        self.cost_obs = 0.0
+        self.cost_connect = 0.0
+        self.cost_coll = 0.0
+        self.cost_travel = 0.0
+        self.cost_cover = 0.0
+        self.cost_all = 0.0
+
+    def reset(self):
+        self.cost_obs = 0.0
+        self.cost_connect = 0.0
+        self.cost_coll = 0.0
+        self.cost_travel = 0.0
+        self.cost_cover = 0.0
+        self.cost_all = 0.0
+
+    def as_tuple(self):
+        return (self.cost_obs, self.cost_connect, self.cost_coll, self.cost_travel, self.cost_cover, self.cost_all)
+
+
 # PSO Particle
 class Particle:
     def __init__(self, num_robots, map_data, safe_x, safe_y, start_center=None, start_radius=None):
