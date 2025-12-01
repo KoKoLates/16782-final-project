@@ -24,8 +24,10 @@ from planner.jss import JointAStarPlanner
 from visualizer import Visualizer as BaseNewVisualizer
 from placement.node import get_valid_position_on_map
 
-def run_coverage():
+def run_coverage(num):
     env = Env(map_path)
+    if num > 0:
+        env.set_robots_number(num)
     targets = []
     cost = 0.0
     actual_iter = 0 
@@ -206,10 +208,20 @@ ga_pop_size = 50
 Jss_num = 2
 
 # other planned 
-tartget_num = 0
+target_num = 0
 
 if task_type in ["Coverage", "Both (Stage 1 + Stage 2)"]:
     st.sidebar.subheader("Stage 1: Coverage")
+    target_mode = st.sidebar.radio(
+            "Number to generate",
+            ["Default with map", "Custom Number"]
+        )
+        
+    if target_mode == "Custom Number":
+        target_num = st.sidebar.slider("Number of Targets", min_value=1, max_value=30, value=10)
+    else:
+        target_num = 0
+        
     cov_init_method = st.sidebar.selectbox(
         "Initialization Mode", 
         ["connected", "random"], 
@@ -234,29 +246,30 @@ if task_type in ["Planner", "Both (Stage 1 + Stage 2)"]:
     with st.sidebar.expander(f"{plan_algo} Parameters", expanded=True):
         if plan_algo == "PP":
             priority_mode = st.sidebar.radio("Priority Mode",["default", "random", "closest", "far"])
-            target_mode = st.sidebar.radio(
-                    "Number to generate",
-                    ["Default with map", "Custom Number"]
-                )
-                
-            if target_mode == "Custom Number":
-                target_num = st.sidebar.slider("Number of Targets", min_value=1, max_value=10, value=5)
-            else:
-                target_num = 0
+            if task_type not in ["Both (Stage 1 + Stage 2)"]:
+                target_mode = st.sidebar.radio(
+                        "Number to generate",
+                        ["Default with map", "Custom Number"]
+                    )
+                    
+                if target_mode == "Custom Number":
+                    target_num = st.sidebar.slider("Number of Targets", min_value=1, max_value=10, value=5)
+                else:
+                    target_num = 0
 
         if plan_algo == "CBS":    
             target_mode = st.sidebar.radio(
                     "Number to generate",
                     ["Default with map", "Custom Number"]
                 )
-                
-            if target_mode == "Custom Number":
-                target_num = st.sidebar.slider("Number of Targets", min_value=1, max_value=10, value=5)
-            else:
-                target_num = 0
-
+            if task_type not in ["Both (Stage 1 + Stage 2)"]:
+                if target_mode == "Custom Number":
+                    target_num = st.sidebar.slider("Number of Targets", min_value=1, max_value=10, value=5)
+                else:
+                    target_num = 0
         if plan_algo == "JSS":
-           Jss_num = st.slider("Number to generate", min_value=1, max_value=3, value=Jss_num)
+           if task_type not in ["Both (Stage 1 + Stage 2)"]:
+               Jss_num = st.slider("Number to generate", min_value=1, max_value=3, value=Jss_num)
 
 btn_col, txt_col = st.columns([1,15], vertical_alignment="center")
 with btn_col:
@@ -272,7 +285,8 @@ if run_pressed:
     if task_type == "Coverage":
         with st.spinner("Simulating Coverage..."):
             start_time = time.time() 
-            env, targets, best_cost, config, stop_it, max_iter = run_coverage()
+            env, targets, best_cost, config, stop_it, max_iter = run_coverage(target_num)
+            target_num = 0
             exec_time = time.time() - start_time
         if targets:
             col1, col2 = st.columns([2, 2]) # Adjusted ratio for better text display
@@ -410,7 +424,8 @@ if run_pressed:
             world.add_agent(Robot("Robot B", path2, 4.0, 0.7, 'c'))
 
             start_time = time.time()
-            env, targets, best_cost, config, stop_it, max_iter = run_coverage()
+            env, targets, best_cost, config, stop_it, max_iter = run_coverage(target_num)
+            target_num = 0
             cov_time = time.time() - start_time
 
             paths = []
@@ -423,8 +438,12 @@ if run_pressed:
                         planner = CBSPlanner(env, max_time=100)
                         paths = planner.process(targets)
                     elif plan_algo == "JSS":
-                        planner = JointAStarPlanner(env)
-                        paths = planner.process(targets)
+                        # error fot num
+                        if env.robot_num < 3:
+                            planner = JointAStarPlanner(env)
+                            paths = planner.process(targets)
+                        else: 
+                            st.error("JSS only supports up to 2 robots currently.")
             
             total_time = time.time() - start_time
 
@@ -474,7 +493,13 @@ if run_pressed:
 
             with col4:
                 viz = StreamlitNewVisualizer(env)
-                html_code = viz.get_animation_html(paths, interval=200)
-                components.html(html_code, height=900, scrolling=True)
+                if plan_algo == "JSS":
+                    # error fot num
+                    if env.robot_num < 3:
+                        html_code = viz.get_animation_html(paths, interval=200)
+                        components.html(html_code, height=900, scrolling=True)
+                else:
+                    html_code = viz.get_animation_html(paths, interval=200)
+                    components.html(html_code, height=900, scrolling=True)
 
                
