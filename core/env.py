@@ -36,6 +36,9 @@ class Env:
 
         return (self.map[x, y] < 1e5) and (self.map[x, y] >= 0)
     
+    def set_robots_number(self, num: int) -> None:
+        self.robot_num = num
+    
     def get_cost(self, x: int, y: int) -> float:
         if not (0 <= x < self.w and 0 <= y < self.h):
             raise IndexError(f"Coordinates ({x}, {y}) out of bounds")
