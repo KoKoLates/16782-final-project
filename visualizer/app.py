@@ -13,12 +13,22 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
-# 匯入專案模組
 from multi_robot import World, Visualizer as OldVisualizer, Robot, Entity, Obstacle
 from core.env import Env
-from coverage.pso import ParticleSwarmOptimizer
+from placement.pso import ParticleSwarmOptimizer, PSOParams
+from placement.ga import GA, GAParams
 from planner.prioritize import PrioritizedPlanner
+from planner.cbs import CBSPlanner
+from planner.jss import JointAStarPlanner
 from visualizer import Visualizer as BaseNewVisualizer
+
+
+def get_available_maps():
+    maps_dir = os.path.join(parent_dir, "maps")
+    if not os.path.exists(maps_dir):
+        return []
+    files = [f for f in os.listdir(maps_dir) if f.endswith(".txt")]
+    return sorted(files)
 
 class StreamlitNewVisualizer(BaseNewVisualizer):
     def get_points_fig(self, points):
@@ -99,6 +109,16 @@ resolution = st.sidebar.select_slider('Map Resolution', options=[40, 60, 80, 100
 frames = st.sidebar.select_slider('Simulation Frames', options=[30, 40, 50, 80], value=40)
 st.sidebar.markdown("---") 
 
+st.sidebar.header("Map Selection")
+available_maps = get_available_maps()
+if available_maps:
+    selected_map = st.sidebar.selectbox("Choose a Map file (.txt)", available_maps)
+    map_path = os.path.join(parent_dir, "maps", selected_map)
+else:
+    st.sidebar.error("No maps found in 'maps/' folder!")
+    selected_map = None
+    map_path = None
+
 st.sidebar.header("Select Task Type")
 task_type = st.sidebar.radio(
     "Choose what to run:",
@@ -112,12 +132,12 @@ priority_mode = "default"
 st.sidebar.header("Algorithm Selection")
 if task_type in ["Coverage", "Both (Stage 1 + Stage 2)"]:
     st.sidebar.subheader("Stage 1: Coverage")
-    cov_algo = st.sidebar.selectbox("Coverage Algorithm", ["PSO", "GA", "Voronoi"], key="cov")
+    cov_algo = st.sidebar.selectbox("Coverage Algorithm", ["PSO", "GA"], key="cov")
     
     with st.sidebar.expander(f"{cov_algo} Parameters"):
         if cov_algo == "PSO":
-            st.number_input("Interations", value=100)
-            st.slider("Inertia (w)", 100, 300, 500)
+            pso_particle_count = st.slider("Particle Count", min_value=50, max_value=500, value=100)
+            pso_max_iter = st.slider("Max Iterations", min_value=50, max_value=500, value=100)
         elif cov_algo == "GA":
             st.number_input("Interations", value=100)
             st.slider("Inertia (w)", 100, 300, 500)
@@ -141,7 +161,6 @@ if st.button("Run", type="primary"):
     st.info(status_msg)
     if task_type == "Coverage":
         with st.spinner("Simulating Coverage..."):
-            map_path = os.path.join(parent_dir, "maps", "map2.txt") 
             env = Env(map_path)
             targets = []
             
@@ -150,10 +169,12 @@ if st.button("Run", type="primary"):
             if cov_algo == "GA":
                 st.error("GA logic not yet implemented.")
             elif cov_algo == "PSO":
-                pso = ParticleSwarmOptimizer(env) 
+                pso_params = PSOParams(
+                    particle_count=pso_particle_count,
+                    max_iter=pso_max_iter
+                )
+                pso = ParticleSwarmOptimizer(env, params=pso_params) 
                 targets = pso.process()
-            elif cov_algo == "Voronoi":
-                st.error("Voronoi logic not yet implemented.")
             
             exec_time = time.time() - start_time 
 
@@ -161,7 +182,6 @@ if st.button("Run", type="primary"):
             col1, col2 = st.columns([2, 2])
             
             with col1:
-                st.subheader("Visualization")
                 viz = StreamlitNewVisualizer(env)
                 fig = viz.get_points_fig(targets)
                 st.pyplot(fig, use_container_width=False)
@@ -175,7 +195,6 @@ if st.button("Run", type="primary"):
             st.error("No targets found.")
 
     elif task_type == "Planner":        
-        map_path = os.path.join(parent_dir, "maps", "map2.txt")
         if not os.path.exists(map_path):
             st.error(f"Can not find map file: {map_path}")
         else:
