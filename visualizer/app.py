@@ -14,7 +14,8 @@ import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
-from multi_robot import World, Visualizer as OldVisualizer, Robot, Entity, Obstacle
+# from multi_robot import World, Visualizer as OldVisualizer, Robot, Entity, Obstacle
+from wifi_signal import SignalVisualizer
 from core.env import Env
 from placement.pso import ParticleSwarmOptimizer, PSOParams
 from placement.ga import GA, GAParams
@@ -88,10 +89,19 @@ def get_available_maps():
     return sorted(files)
 
 class StreamlitNewVisualizer(BaseNewVisualizer):
+    def _set_consistent_style(self, ax, fig_width):
+        base_width = 5.0
+        base_fontsize = 9.0
+        scale = fig_width / base_width
+        scaled_fontsize = base_fontsize * scale
+        ax.tick_params(axis='both', which='major', labelsize=scaled_fontsize)
+        return scaled_fontsize
+
     def get_points_fig(self, points):
         fig, ax = self._prepare_ax()
-        fig.set_size_inches(3, 3)
-
+        current_size = (3, 3)
+        fig.set_size_inches(current_size)
+        font_size = self._set_consistent_style(ax, current_size[0])
         cmap = matplotlib.colormaps["tab20"]
 
         ax.scatter(self.w / 2, self.h / 2, marker='x', color='gray', s=80, linewidths=2)
@@ -110,11 +120,14 @@ class StreamlitNewVisualizer(BaseNewVisualizer):
             x1, y1 = nodes[i]
             x2, y2 = nodes[j]
             ax.plot([x1, x2], [y1, y2], color='black', linewidth=1, alpha=0.5)
+        
         return fig
 
     def get_animation_html(self, paths, interval=200):
         fig, ax = self._prepare_ax()
-        fig.set_size_inches(5, 5)
+        current_size = (5, 5)
+        fig.set_size_inches(current_size)
+        font_size = self._set_consistent_style(ax, current_size[0])
         cmap = matplotlib.colormaps["tab20"]
         
         scatters = []
@@ -161,7 +174,48 @@ class StreamlitNewVisualizer(BaseNewVisualizer):
         )
         return ani.to_jshtml(default_mode='loop')
 
+class StreamlitSignalVisualizer(SignalVisualizer):
+    def get_animation_html(self, paths, interval=200):
+        fig, ax = self._prepare_ax()
+        fig.set_size_inches(8, 8)
 
+        robot_colors = matplotlib.colormaps["tab20"]
+        self.robot_plots = []
+        
+        for i in range(len(paths)):
+            plot, = ax.plot([], [], marker='o', markersize=8, color=robot_colors(i), label=f"Robot {i}")
+            self.robot_plots.append(plot)
+            
+        fig.colorbar(self.heatmap, ax=ax, label="Signal Strength")
+        ax.legend(loc="upper right")
+        
+        num_frames = max(len(p) for p in paths) if paths else 0
+        
+        def update(frame):
+            robot_positions = []
+            for path in paths:
+                idx = min(frame, len(path) - 1)
+                robot_positions.append((path[idx].x, path[idx].y))
+            
+            for i, pos in enumerate(robot_positions):
+                if i < len(self.robot_plots):
+                    self.robot_plots[i].set_data([pos[0]], [pos[1]])
+            
+            Z = self._compute_signal(robot_positions)
+            self.heatmap.set_array(Z.ravel())
+            
+            return self.robot_plots + [self.heatmap, self.station_plot]
+        
+        ani = FuncAnimation(
+            fig, update,
+            frames=num_frames,
+            interval=interval,
+            blit=False,
+            repeat=True
+        )
+        
+        return ani.to_jshtml(default_mode='loop')
+    
 matplotlib.use('Agg')
 plt.rcParams['animation.embed_limit'] = 100.0 
 st.set_page_config(layout='wide', page_title="Robot Planning Demo")
@@ -253,7 +307,7 @@ if task_type in ["Planner", "Both (Stage 1 + Stage 2)"]:
                     )
                     
                 if target_mode == "Custom Number":
-                    target_num = st.sidebar.slider("Number of Targets", min_value=1, max_value=10, value=5)
+                    target_num = st.sidebar.slider("Number of Targets", min_value=1, max_value=25, value=5)
                 else:
                     target_num = 0
 
@@ -264,7 +318,7 @@ if task_type in ["Planner", "Both (Stage 1 + Stage 2)"]:
                 )
             if task_type not in ["Both (Stage 1 + Stage 2)"]:
                 if target_mode == "Custom Number":
-                    target_num = st.sidebar.slider("Number of Targets", min_value=1, max_value=10, value=5)
+                    target_num = st.sidebar.slider("Number of Targets", min_value=1, max_value=25, value=5)
                 else:
                     target_num = 0
         if plan_algo == "JSS":
@@ -289,7 +343,7 @@ if run_pressed:
             target_num = 0
             exec_time = time.time() - start_time
         if targets:
-            col1, col2 = st.columns([2, 2]) # Adjusted ratio for better text display
+            col1, col2 = st.columns([2, 2]) 
             
             with col1:
                 viz = StreamlitNewVisualizer(env)
@@ -298,25 +352,18 @@ if run_pressed:
                 plt.close(fig)
             
             with col2:                
-                # 1. Configuration
                 st.markdown("#### ⚙️ Configuration")
                 st.json(config, expanded=True)
 
-                # 2. Performance Metrics
                 st.markdown("#### 📊 Performance")
                 desired = env.robot_num
                 found = len(targets)
                 st.write(f"**Iterations:** {stop_it} " )
-                # Robot Number
                 st.write(f"**Robot Number:** {found} / {desired}")
-                # Runtime
                 st.write(f"**Runtime:** {exec_time:.4f} s")
-                # Overall Cost
                 st.write(f"**Overall Cost:** {best_cost:.4f}")
                 
-                # 3. Target Positions
                 st.markdown("#### 📍 Targets Found")
-                # Format list for cleaner display
                 target_str = "\n".join([str(t) for t in targets])
                 st.text(target_str)
 
@@ -355,7 +402,6 @@ if run_pressed:
                     raw_pos = get_valid_position_on_map(np.array(env.map, dtype=np.float32), x_range, y_range)
                     target = (int(raw_pos[0]), int(raw_pos[1]))
                     
-                    # Check uniqueness: not in targets and not in starts
                     if target not in demo_targets and target not in starts:
                         demo_targets.append(target)
                     
@@ -411,18 +457,6 @@ if run_pressed:
 
     elif task_type == "Both (Stage 1 + Stage 2)":
         with st.spinner("Simulating Integrated System..."):
-            
-            world = World(resolution=60)
-            world.add_obstacle(Obstacle((4, 6), 4.0, 1.0, 30.0, 0.1))
-            world.add_obstacle(Obstacle((-5, 5), 3.0, 3.0, 0.0, 0.1))
-            world.add_agent(Entity("Station", (0,0), 4.0, 1.0))
-
-            frames = 40
-            path1 = list(zip(np.linspace(9, 7, frames), np.linspace(0, 7, frames)))
-            path2 = list(zip(np.linspace(-1, 8, frames), np.linspace(1, 4, frames)))
-            world.add_agent(Robot("Robot A", path1, 4.0, 0.7, 'b'))
-            world.add_agent(Robot("Robot B", path2, 4.0, 0.7, 'c'))
-
             start_time = time.time()
             env, targets, best_cost, config, stop_it, max_iter = run_coverage(target_num)
             target_num = 0
@@ -438,53 +472,48 @@ if run_pressed:
                         planner = CBSPlanner(env, max_time=100)
                         paths = planner.process(targets)
                     elif plan_algo == "JSS":
-                        # error fot num
-                        if env.robot_num < 3:
+                        if env.robot_num < 4:
                             planner = JointAStarPlanner(env)
                             paths = planner.process(targets)
                         else: 
-                            st.error("JSS only supports up to 2 robots currently.")
+                            st.error("JSS only supports up to 3 robots currently.")
             
             total_time = time.time() - start_time
-
 
             col1, col2 = st.columns([3, 1])
             
             with col1:
-                vis = OldVisualizer(world, fps=10)
-                vis.setup()
-                html_code = vis.get_animation_html(steps=frames, interval=100)
-                components.html(html_code, height=900, scrolling=True)
-                plt.close(vis.fig)
-                
+                if paths:
+                    sig_viz = StreamlitSignalVisualizer(env, resolution=80) 
+                    html_code = sig_viz.get_animation_html(paths, interval=200)
+                    
+                    components.html(html_code, height=800, scrolling=False)
+                    plt.close(sig_viz.heatmap.figure) 
+                else:
+                    st.warning("No paths generated, cannot run signal simulation.")
                 
 
             with col2:
                 st.subheader("Coverage Evaluation")
-                    
-                # 1. Configuration
+
                 st.markdown("#### ⚙️ Configuration")
                 st.json(config, expanded=True)
-
-                # 2. Coverage Metrics
                 st.markdown("#### 📊 Coverage Results")
                 st.write(f"**Robots:** {len(targets)} / {env.robot_num}")
                 st.write(f"**Cost:** {best_cost:.2f}")
                 st.write(f"**Stage 1 Time:** {cov_time:.4f} s")
 
-                # 3. Planner Metrics
                 st.markdown("#### 🚀 Planner Results")
                 total_steps = sum([len(p) for p in paths])
                 st.write(f"**Total Steps:** {total_steps}")
                 st.write(f"**Total Time:** {total_time:.4f} s")
-                
-                # 4. Targets
+
                 st.markdown("#### 📍 Targets Found")
-                # Format list for cleaner display
                 target_str = "\n".join([str(t) for t in targets])
                 st.text(target_str)
 
             col3, col4 = st.columns([2, 2])
+
             with col3:
                 viz = StreamlitNewVisualizer(env)
                 fig = viz.get_points_fig(targets)
@@ -495,7 +524,7 @@ if run_pressed:
                 viz = StreamlitNewVisualizer(env)
                 if plan_algo == "JSS":
                     # error fot num
-                    if env.robot_num < 3:
+                    if env.robot_num < 4:
                         html_code = viz.get_animation_html(paths, interval=200)
                         components.html(html_code, height=900, scrolling=True)
                 else:

@@ -122,7 +122,7 @@ class Visualizer:
 
     def _prepare_ax(self):
         fig, ax = plt.subplots(figsize=(8, 8))
-
+        
         for obs in self.env.obstacles:
             poly = Polygon(obs, closed=True, color="black", alpha=0.7)
             ax.add_patch(poly)
