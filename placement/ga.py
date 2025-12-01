@@ -139,6 +139,7 @@ class GA(Coverage):
         return cost_obs + cost_connect + cost_travel + cost_cover
 
     def process(self) -> List[Tuple[int, int]]:
+        self.stopped_iter = 0
         population = self.init_population()
         chosen_solution = None
         chosen_cost = float('inf') 
@@ -159,6 +160,7 @@ class GA(Coverage):
                 best_hist = chosen_cost
                 
             if stall >= self.params.patience:
+                self.stopped_iter = gen + 1
                 print(f"Early stop at Gen {gen+1}")
                 break
 

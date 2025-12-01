@@ -9,6 +9,7 @@ sys.path.insert(0, parent_dir)
 import streamlit as st
 import streamlit.components.v1 as components
 import numpy as np
+import random
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
@@ -21,11 +22,14 @@ from planner.prioritize import PrioritizedPlanner
 from planner.cbs import CBSPlanner
 from planner.jss import JointAStarPlanner
 from visualizer import Visualizer as BaseNewVisualizer
+from placement.node import get_valid_position_on_map
 
 def run_coverage():
     env = Env(map_path)
     targets = []
     cost = 0.0
+    actual_iter = 0 
+    max_iter_setting = 0 
     config_summary = {
         "Map": selected_map,
         "Algorithm": cov_algo,
@@ -48,7 +52,9 @@ def run_coverage():
         # Re-evaluate to get the cost for display
         if targets:
             cost = ga.evaluate(targets)
-        return env, targets, cost, config_summary
+            actual_iter = ga.stopped_iter
+            max_iter_setting = ga_generations
+        return env, targets, cost, config_summary, actual_iter, max_iter_setting 
         
     elif cov_algo == "PSO":
         config_summary.update({
@@ -67,8 +73,10 @@ def run_coverage():
         # Re-evaluate to get the cost for display
         if targets:
             cost = pso.evaluate(targets)
+            actual_iter = pso.stopped_iter
+            max_iter_setting = pso_max_iter
         
-    return env, targets, cost, config_summary
+    return env, targets, cost, config_summary, actual_iter, max_iter_setting
 
 def get_available_maps():
     maps_dir = os.path.join(parent_dir, "maps")
@@ -80,7 +88,7 @@ def get_available_maps():
 class StreamlitNewVisualizer(BaseNewVisualizer):
     def get_points_fig(self, points):
         fig, ax = self._prepare_ax()
-        fig.set_size_inches(5, 5)
+        fig.set_size_inches(3, 3)
 
         cmap = matplotlib.colormaps["tab20"]
 
@@ -93,11 +101,18 @@ class StreamlitNewVisualizer(BaseNewVisualizer):
             ax.scatter(x, y, color=cmap(i), s=60, label=f'robot {i + 1}')
             circle = plt.Circle((x, y), radius=4, edgecolor=cmap(i), fill=False, linewidth=1.5)
             ax.add_patch(circle)
-            
+        
+        # add connected line
+        nodes, edges = self._compute_connectivity(points)
+        for i, j in edges:
+            x1, y1 = nodes[i]
+            x2, y2 = nodes[j]
+            ax.plot([x1, x2], [y1, y2], color='black', linewidth=1, alpha=0.5)
         return fig
 
     def get_animation_html(self, paths, interval=200):
         fig, ax = self._prepare_ax()
+        fig.set_size_inches(5, 5)
         cmap = matplotlib.colormaps["tab20"]
         
         scatters = []
@@ -152,6 +167,7 @@ st.title('Multi-Robot Planning for Communication Coverage Optimization')
 
 
 st.sidebar.title('Settings')
+st.sidebar.header("Visualization options")
 resolution = st.sidebar.select_slider('Map Resolution', options=[40, 60, 80, 100], value=60)
 frames = st.sidebar.select_slider('Simulation Frames', options=[30, 40, 50, 80], value=40)
 st.sidebar.markdown("---") 
@@ -178,15 +194,20 @@ priority_mode = "default"
 
 # Default values
 pso_particle_count = 100
-pso_max_iter = 100
-pso_repulsion = True
+pso_max_iter = 200
+pso_repulsion = False
 cov_init_method = "connected"
 
 # GA Defaults
 ga_generations = 200
 ga_pop_size = 50
 
-st.sidebar.header("Algorithm Selection")
+# JSS Defaults
+Jss_num = 2
+
+# other planned 
+tartget_num = 0
+
 if task_type in ["Coverage", "Both (Stage 1 + Stage 2)"]:
     st.sidebar.subheader("Stage 1: Coverage")
     cov_init_method = st.sidebar.selectbox(
@@ -197,59 +218,81 @@ if task_type in ["Coverage", "Both (Stage 1 + Stage 2)"]:
     
     cov_algo = st.sidebar.selectbox("Coverage Algorithm", ["PSO", "GA"], key="cov")
     
-    with st.sidebar.expander(f"{cov_algo} Parameters", expanded=True):
+    with st.sidebar.expander(f"{cov_algo} Parameters Options", expanded=True):
         if cov_algo == "PSO":
-            pso_particle_count = st.slider("Particle Count", min_value=50, max_value=500, value=100)
-            pso_max_iter = st.slider("Max Iterations", min_value=50, max_value=500, value=100)
-            pso_repulsion = st.checkbox("Enable Repulsion (Collision Avoidance)", value=True)
+            pso_particle_count = st.slider("Particle Count", min_value=50, max_value=500, value=pso_particle_count)
+            pso_max_iter = st.slider("Max Iterations", min_value=50, max_value=500, value=pso_max_iter)
+            pso_repulsion = st.checkbox("Enable Repulsion", value=pso_repulsion)
             
         elif cov_algo == "GA":
-            ga_generations = st.slider("Max Iterations", min_value=50, max_value=500, value=200)
-            ga_pop_size = st.slider("Population Size", min_value=50, max_value=100, value=50)
-
+            ga_generations = st.slider("Max Iterations", min_value=50, max_value=500, value=ga_generations)
+            ga_pop_size = st.slider("Population Size", min_value=50, max_value=100, value=ga_pop_size)
 if task_type in ["Planner", "Both (Stage 1 + Stage 2)"]:
-    st.sidebar.subheader("Stage 2: Planner")
-    plan_algo = st.sidebar.selectbox("Choose Algorithm", ["JSS", "PP", "CBS"], key="plan")
+    st.sidebar.subheader("Stage 2: Planning")
+    plan_algo = st.sidebar.selectbox("Choose Algorithm", ["PP", "CBS", "JSS"], key="plan")
     
-    with st.sidebar.expander(f"{plan_algo} Parameters"):
+    with st.sidebar.expander(f"{plan_algo} Parameters", expanded=True):
         if plan_algo == "PP":
-           priority_mode = st.sidebar.radio(
-                "Priority Mode",
-                ["default", "random", "closest", "far"]
-            )
+            priority_mode = st.sidebar.radio("Priority Mode",["default", "random", "closest", "far"])
+            target_mode = st.sidebar.radio(
+                    "Number to generate",
+                    ["Default with map", "Custom Number"]
+                )
+                
+            if target_mode == "Custom Number":
+                target_num = st.sidebar.slider("Number of Targets", min_value=1, max_value=10, value=5)
+            else:
+                target_num = 0
 
-if st.button("Run", type="primary"):
+        if plan_algo == "CBS":    
+            target_mode = st.sidebar.radio(
+                    "Number to generate",
+                    ["Default with map", "Custom Number"]
+                )
+                
+            if target_mode == "Custom Number":
+                target_num = st.sidebar.slider("Number of Targets", min_value=1, max_value=10, value=5)
+            else:
+                target_num = 0
+
+        if plan_algo == "JSS":
+           Jss_num = st.slider("Number to generate", min_value=1, max_value=3, value=Jss_num)
+
+btn_col, txt_col = st.columns([1,20], vertical_alignment="center")
+with btn_col:
+    run_pressed = st.button("Run", type="primary")
+
+if run_pressed:
     status_msg = f"Running **{task_type}**"
     if cov_algo: status_msg += f" with **{cov_algo}**"
-    if plan_algo: status_msg += f" and **{plan_algo}**"
+    if plan_algo: status_msg += f" with **{plan_algo}**"
     
-    st.info(status_msg)
+    with txt_col:
+        st.info(status_msg)
     if task_type == "Coverage":
         with st.spinner("Simulating Coverage..."):
             start_time = time.time() 
-            env, targets, best_cost, config = run_coverage()
+            env, targets, best_cost, config, stop_it, max_iter = run_coverage()
             exec_time = time.time() - start_time
         if targets:
-            col1, col2 = st.columns([2, 1]) # Adjusted ratio for better text display
+            col1, col2 = st.columns([2, 2]) # Adjusted ratio for better text display
             
             with col1:
                 viz = StreamlitNewVisualizer(env)
                 fig = viz.get_points_fig(targets)
-                st.pyplot(fig, use_container_width=True)
+                st.pyplot(fig, use_container_width=False)
                 plt.close(fig)
             
-            with col2:
-                st.subheader("Coverage Evaluation")
-                
+            with col2:                
                 # 1. Configuration
                 st.markdown("#### ⚙️ Configuration")
-                st.json(config, expanded=False)
+                st.json(config, expanded=True)
 
                 # 2. Performance Metrics
                 st.markdown("#### 📊 Performance")
                 desired = env.robot_num
                 found = len(targets)
-                
+                st.write(f"**Iterations:** {stop_it} " )
                 # Robot Number
                 st.write(f"**Robot Number:** {found} / {desired}")
                 # Runtime
@@ -267,18 +310,44 @@ if st.button("Run", type="primary"):
             st.error("No targets found.")
 
     elif task_type == "Planner":        
-        with st.spinner("Simulating Coverage..."):
             if not os.path.exists(map_path):
                 st.error(f"Can not find map file: {map_path}")
             else:
                 env = Env(map_path)
+                if plan_algo == "JSS":
+                    env.set_robots_number(Jss_num)
+                else:
+                    if target_num > 0:
+                        env.set_robots_number(target_num)
+                        target_num = 0
                 num_robots = env.robot_num
-                st.info(f"Detected {num_robots} robots on the map.")
-                demo_targets = [(30,39), (37,36), (38,29), (38,22), (30,12), (12,20)]
+                # Random generate targets
+                demo_targets = []
+                
+                # Define map ranges (using entire map)
+                x_range = (0, env.w - 1)
+                y_range = (0, env.h - 1)
+                
+                # Identify start positions to avoid overlaps if necessary
+                starts = []
+                if hasattr(env, 'agents'):
+                    starts = [tuple(a.pos) for a in env.agents if hasattr(a, 'pos')]
+                elif hasattr(env, 'starts'):
+                    starts = env.starts
+
+                # Generation Loop
+                while len(demo_targets) < num_robots:
+                    # Get a valid random position (legal: inside map, not obstacle)
+                    raw_pos = get_valid_position_on_map(np.array(env.map, dtype=np.float32), x_range, y_range)
+                    target = (int(raw_pos[0]), int(raw_pos[1]))
+                    
+                    # Check uniqueness: not in targets and not in starts
+                    if target not in demo_targets and target not in starts:
+                        demo_targets.append(target)
+                    
+                
                 if num_robots < len(demo_targets):
                     demo_targets = demo_targets[:num_robots]
-                
-                st.write(f"Planning for targets: {demo_targets}")
                 
                 paths = []
                 start_time = time.time()
@@ -297,22 +366,24 @@ if st.button("Run", type="primary"):
                 exec_time = time.time() - start_time
 
                 if paths:
-                    col1, col2 = st.columns([3, 1])
+                    col1, col2 = st.columns([2, 2])
                     
                     with col1:
-                        st.subheader("Animation")
                         viz = StreamlitNewVisualizer(env)
                         html_code = viz.get_animation_html(paths, interval=200)
                         components.html(html_code, height=900, scrolling=True)
 
                     with col2:
-                        st.subheader("Evaluation")
-                        st.markdown("**Configuration**")
+                        st.markdown("#### 📍 Targets Found")
+                        demo_target_str = "\n".join([str(t) for t in demo_targets])
+                        st.text(demo_target_str)
+                        
+                        st.markdown("#### ⚙️ Configuration")
                         st.write(f"Algo: {plan_algo}")
                         st.write(f"Mode: {priority_mode}")
                         st.write(f"Map: {selected_map}")
                         
-                        st.markdown("**Metrics**")
+                        st.markdown("#### 📊 Performance")
                         total_steps = sum([len(p) for p in paths])
                         makespan = max([len(p) for p in paths])
                         avg_len = total_steps / len(paths)
@@ -320,7 +391,9 @@ if st.button("Run", type="primary"):
                         st.write(f"Total Steps: {total_steps}")
                         st.write(f"Makespan: {makespan}")
                         st.write(f"Avg Cost: {avg_len:.1f}")
-                        st.write(f"Time: {exec_time:.4f} s")
+                        st.write(f"Time: {exec_time:.4f} s")                  
+                       
+
 
     elif task_type == "Both (Stage 1 + Stage 2)":
         with st.spinner("Simulating Integrated System..."):
@@ -337,7 +410,7 @@ if st.button("Run", type="primary"):
             world.add_agent(Robot("Robot B", path2, 4.0, 0.7, 'c'))
 
             start_time = time.time()
-            env, targets, best_cost, config = run_coverage()
+            env, targets, best_cost, config, stop_it, max_iter = run_coverage()
             cov_time = time.time() - start_time
 
             paths = []
@@ -356,27 +429,23 @@ if st.button("Run", type="primary"):
             total_time = time.time() - start_time
 
 
-            col1, col2 = st.columns([2, 2])
+            col1, col2 = st.columns([3, 1])
             
             with col1:
-                st.subheader("Integrated Simulation")
                 vis = OldVisualizer(world, fps=10)
                 vis.setup()
                 html_code = vis.get_animation_html(steps=frames, interval=100)
                 components.html(html_code, height=900, scrolling=True)
                 plt.close(vis.fig)
                 
-                viz = StreamlitNewVisualizer(env)
-                fig = viz.get_points_fig(targets)
-                st.pyplot(fig, use_container_width=True)
-                plt.close(fig)
+                
 
             with col2:
                 st.subheader("Coverage Evaluation")
                     
                 # 1. Configuration
                 st.markdown("#### ⚙️ Configuration")
-                st.json(config, expanded=False)
+                st.json(config, expanded=True)
 
                 # 2. Coverage Metrics
                 st.markdown("#### 📊 Coverage Results")
@@ -396,9 +465,14 @@ if st.button("Run", type="primary"):
                 target_str = "\n".join([str(t) for t in targets])
                 st.text(target_str)
 
-               
+            col3, col4 = st.columns([2, 2])
+            with col3:
+                viz = StreamlitNewVisualizer(env)
+                fig = viz.get_points_fig(targets)
+                st.pyplot(fig, use_container_width=False)
+                plt.close(fig)
 
-                st.subheader("Integrated Simulation")
+            with col4:
                 viz = StreamlitNewVisualizer(env)
                 html_code = viz.get_animation_html(paths, interval=200)
                 components.html(html_code, height=900, scrolling=True)

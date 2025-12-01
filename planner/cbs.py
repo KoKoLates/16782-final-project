@@ -148,6 +148,8 @@ class CBSPlanner(Planner):
                     sj_t = self._get_state_at_time(paths[j], t)
 
                     # Vertex conflict
+                    if si_t.x == self.env.w // 2 and sj_t.x == self.env.w // 2 and si_t.y == self.env.h // 2 and sj_t.y == self.env.h // 2:
+                        continue
                     if si_t.x == sj_t.x and si_t.y == sj_t.y:
                         return Conflict(
                             robot_i=i,
