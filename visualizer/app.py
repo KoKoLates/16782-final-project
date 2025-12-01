@@ -258,7 +258,7 @@ if task_type in ["Planner", "Both (Stage 1 + Stage 2)"]:
         if plan_algo == "JSS":
            Jss_num = st.slider("Number to generate", min_value=1, max_value=3, value=Jss_num)
 
-btn_col, txt_col = st.columns([1,20], vertical_alignment="center")
+btn_col, txt_col = st.columns([1,15], vertical_alignment="center")
 with btn_col:
     run_pressed = st.button("Run", type="primary")
 
