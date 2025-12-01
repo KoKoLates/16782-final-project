@@ -15,8 +15,8 @@ from functools import reduce
 from typing import Set, List, Tuple, Optional
 
 
-class ObstacleHandler:
-    def __init__(self, vertices: List[Tuple[float, float]], attenuation: float = 0.1):
+class ObstacleHandler(object): 
+    def __init__(self, vertices: List[Tuple[float, float]], attenuation: float = 0.5):
         self.vertices = np.array(vertices)
         self.center = np.mean(self.vertices, axis=0)
         self.attenuation = attenuation
@@ -39,7 +39,19 @@ class ObstacleHandler:
         
         return inside
     
-    def line_attenuation(self, p1: np.ndarray, p2: np.ndarray, num_samples: int = 10) -> float:
+    def line_attenuation(self, p1: np.ndarray, p2: np.ndarray, 
+                        num_samples: int = 10) -> float:
+        """
+        Calculate attenuation along a line segment.
+        
+        Args:
+            p1: Start point
+            p2: End point
+            num_samples: Number of points to sample along the line
+        
+        Returns:
+            Attenuation factor (self.attenuation if line crosses obstacle, 1.0 otherwise)
+        """
         samples_x = np.linspace(p1[0], p2[0], num_samples)
         samples_y = np.linspace(p1[1], p2[1], num_samples)
         
@@ -51,6 +63,16 @@ class ObstacleHandler:
         return 1.0
     
     def _vectorized_point_in_polygon(self, X: np.ndarray, Y: np.ndarray) -> np.ndarray:
+        """
+        Vectorized ray casting for entire grid.
+        
+        Args:
+            X: Grid of X coordinates
+            Y: Grid of Y coordinates
+        
+        Returns:
+            Boolean mask of points inside polygon
+        """
         inside = np.zeros_like(X, dtype=bool)
         n = len(self.vertices)
         
@@ -67,38 +89,100 @@ class ObstacleHandler:
         
         return inside
     
-    def create_field_attenuation_mask(self, X: np.ndarray, Y: np.ndarray, 
-                                     source_pos: np.ndarray) -> np.ndarray:
+    def _find_silhouette_vertices(self, source_pos: np.ndarray) -> Tuple[int, int]:
+        """
+        Find the two vertices that form the silhouette edges visible from source.
+        
+        These are the vertices with minimum and maximum angles from the source.
+        
+        Args:
+            source_pos: Source position [x, y]
+        
+        Returns:
+            Indices of the two silhouette vertices (min_angle_idx, max_angle_idx)
+        """
         s_x, s_y = source_pos
         
-        vertex_angles = np.arctan2(self.vertices[:, 1] - s_y, self.vertices[:, 0] - s_x)
-        angle_center = np.arctan2(self.center[1] - s_y, self.center[0] - s_x)
+        # Calculate angles from source to each vertex
+        dx = self.vertices[:, 0] - s_x
+        dy = self.vertices[:, 1] - s_y
+        angles = np.arctan2(dy, dx)
         
-        relative_angles = (vertex_angles - angle_center + np.pi) % (2 * np.pi) - np.pi
-        min_rel_angle = np.min(relative_angles)
-        max_rel_angle = np.max(relative_angles)
+        # Find min and max angles
+        min_idx = np.argmin(angles)
+        max_idx = np.argmax(angles)
         
-        shadow_angle_1 = (angle_center + min_rel_angle + np.pi) % (2 * np.pi) - np.pi
-        shadow_angle_2 = (angle_center + max_rel_angle + np.pi) % (2 * np.pi) - np.pi
+        # Handle wraparound case at -π/π boundary
+        angle_span = angles[max_idx] - angles[min_idx]
+        if angle_span > np.pi:
+            # The obstacle wraps around, swap to get the smaller span
+            min_idx, max_idx = max_idx, min_idx
         
-        Grid_Angles = np.arctan2(Y - s_y, X - s_x)
+        return min_idx, max_idx
+    
+    def create_field_attenuation_mask(self, X: np.ndarray, Y: np.ndarray, 
+                                     source_pos: np.ndarray) -> np.ndarray:
+        """
+        Create shadow mask for signal attenuation from a source.
         
-        a1, a2 = shadow_angle_1, shadow_angle_2
-        if a1 <= a2:
-            is_in_wedge = (Grid_Angles >= a1) & (Grid_Angles <= a2)
-        else:
-            is_in_wedge = (Grid_Angles >= a1) | (Grid_Angles <= a2)
-        vertex_dists_sq = np.sum((self.vertices - source_pos)**2, axis=1)
-        min_dist_sq = np.min(vertex_dists_sq)
-        Grid_Dist_Sq = (X - s_x)**2 + (Y - s_y)**2
-        is_behind = (Grid_Dist_Sq >= min_dist_sq * 0.95)
+        The shadow extends beyond the line connecting the two silhouette vertices.
+        The source is on one side (no attenuation), shadow is on the other side.
         
+        Args:
+            X: Grid of X coordinates
+            Y: Grid of Y coordinates
+            source_pos: Source position [x, y]
+        
+        Returns:
+            Attenuation mask (1.0 for no attenuation, self.attenuation for shadowed)
+        """
+        s_x, s_y = source_pos
+        
+        # Step 1: Points inside the obstacle are always attenuated
         is_inside = self._vectorized_point_in_polygon(X, Y)
         
-        shadow_mask = (is_in_wedge & is_behind) | is_inside
+        # Step 2: Find the two silhouette vertices
+        idx1, idx2 = self._find_silhouette_vertices(source_pos)
+        v1 = self.vertices[idx1]  # First silhouette vertex
+        v2 = self.vertices[idx2]  # Second silhouette vertex
         
+        # Step 3: Create the dividing line between v1 and v2
+        # Line equation: (y2-y1)*x - (x2-x1)*y + (x2-x1)*y1 - (y2-y1)*x1 = 0
+        # Or: ax + by + c = 0
+        a = v2[1] - v1[1]
+        b = -(v2[0] - v1[0])
+        c = (v2[0] - v1[0]) * v1[1] - (v2[1] - v1[1]) * v1[0]
+        
+        # Step 4: Determine which side the source is on
+        source_side = a * s_x + b * s_y + c
+        
+        # Step 5: Determine which side each grid point is on
+        grid_side = a * X + b * Y + c
+        
+        # Step 6: Points are in shadow if they're on the OPPOSITE side from source
+        # Use sign comparison: if source_side and grid_side have different signs
+        on_shadow_side = (source_side * grid_side) < 0
+        
+        # Step 7: Also check if points are within the angular cone
+        # (between the two silhouette vertices as seen from source)
+        angle1 = np.arctan2(v1[1] - s_y, v1[0] - s_x)
+        angle2 = np.arctan2(v2[1] - s_y, v2[0] - s_x)
+        
+        grid_angles = np.arctan2(Y - s_y, X - s_x)
+        
+        if angle1 <= angle2:
+            in_cone = (grid_angles >= angle1) & (grid_angles <= angle2)
+        else:
+            # Wraps around -π/π boundary
+            in_cone = (grid_angles >= angle1) | (grid_angles <= angle2)
+        
+        # Step 8: Combine conditions
+        # Shadow = (in cone AND on shadow side of line) OR inside obstacle
+        shadow_region = (in_cone & on_shadow_side) | is_inside
+        
+        # Step 9: Create the attenuation mask
         mask = np.ones_like(X, dtype=np.float32)
-        mask[shadow_mask] = self.attenuation
+        mask[shadow_region] = self.attenuation
         
         return mask
 
