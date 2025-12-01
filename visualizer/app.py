@@ -286,7 +286,7 @@ if task_type in ["Coverage", "Both (Stage 1 + Stage 2)"]:
     
     with st.sidebar.expander(f"{cov_algo} Parameters Options", expanded=True):
         if cov_algo == "PSO":
-            pso_particle_count = st.slider("Particle Count", min_value=50, max_value=500, value=pso_particle_count)
+            pso_particle_count = st.slider("Particle Count", min_value=50, max_value=100, value=pso_particle_count)
             pso_max_iter = st.slider("Max Iterations", min_value=50, max_value=500, value=pso_max_iter)
             pso_repulsion = st.checkbox("Enable Repulsion", value=pso_repulsion)
             
