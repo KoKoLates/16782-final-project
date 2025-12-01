@@ -187,7 +187,6 @@ class StreamlitSignalVisualizer(SignalVisualizer):
             self.robot_plots.append(plot)
             
         fig.colorbar(self.heatmap, ax=ax, label="Signal Strength")
-        ax.legend(loc="upper right")
         
         num_frames = max(len(p) for p in paths) if paths else 0
         
@@ -272,7 +271,7 @@ if task_type in ["Coverage", "Both (Stage 1 + Stage 2)"]:
         )
         
     if target_mode == "Custom Number":
-        target_num = st.sidebar.slider("Number of Targets", min_value=1, max_value=30, value=10)
+        target_num = st.sidebar.slider("Number of Targets", min_value=1, max_value=20, value=10)
     else:
         target_num = 0
         
@@ -487,7 +486,7 @@ if run_pressed:
                     sig_viz = StreamlitSignalVisualizer(env, resolution=80) 
                     html_code = sig_viz.get_animation_html(paths, interval=200)
                     
-                    components.html(html_code, height=800, scrolling=False)
+                    components.html(html_code, height=800, scrolling=True)
                     plt.close(sig_viz.heatmap.figure) 
                 else:
                     st.warning("No paths generated, cannot run signal simulation.")
