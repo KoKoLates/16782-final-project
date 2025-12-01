@@ -4,7 +4,7 @@ import math
 from typing import List, Tuple
 from core import Env
 from dataclasses import dataclass
-from .node import get_valid_position_on_map
+from .node import get_valid_position_on_map, Metric
 from .base import (
     Coverage,
     jit_calculate_coverage, 
@@ -37,6 +37,7 @@ class GA(Coverage):
     def __init__(self, env: Env, params: GAParams = None):
         super().__init__(env)
         self.params = params if params else GAParams()
+        self.metric = Metric()
         
         # Setup Ranges
         margin = int(self.params.robot_gain)
@@ -135,8 +136,9 @@ class GA(Coverage):
             float(self.params.tower_gain), float(self.params.robot_gain), 
             float(self.params.signal_max), float(self.params.signal_threshold)
         )
-        
-        return cost_obs + cost_connect + cost_travel + cost_cover
+        total = cost_obs + cost_connect + cost_travel + cost_cover
+
+        return total
 
     def process(self) -> List[Tuple[int, int]]:
         self.stopped_iter = 0
@@ -174,6 +176,30 @@ class GA(Coverage):
             population = new_pop[:self.params.pop_size]
         
         print(f"End. Best Cost: {chosen_cost:.2f}")
+        
+        raw_result = chosen_solution if chosen_solution else population[0]
+        float_positions = [(float(x), float(y)) for x, y in raw_result]
+        
+        cost_obs = self.cobstacle(float_positions)
+        if cost_obs > 0: return cost_obs + self.params.w_hard_constraint
+            
+        cost_connect, connected = self.cconnectivity(float_positions)
+        if cost_connect > 0: return cost_obs + cost_connect + self.params.w_hard_constraint
+        
+        cost_travel = self.ctravel(float_positions)
+
+        pos_arr = np.array(float_positions, dtype=np.float64)
+        conn_arr = np.array(connected, dtype=np.bool_)
+        cost_cover = jit_calculate_coverage(
+            self.map_data, pos_arr, conn_arr, self.tower_pos,
+            float(self.params.tower_gain), float(self.params.robot_gain), 
+            float(self.params.signal_max), float(self.params.signal_threshold)
+        )
+        self.metric.cost_obs = cost_obs
+        self.metric.cost_connect = cost_connect
+        self.metric.cost_travel = cost_travel
+        self.metric.cost_cover = cost_cover
+        self.metric.cost_all = cost_obs + cost_connect + cost_travel + cost_cover
         
         raw_result = chosen_solution if chosen_solution else population[0]
         final_result_int = []
@@ -219,6 +245,9 @@ class GA(Coverage):
                 ind.append(pos)
             pop.append(ind)
         return pop
+
+    def compute_metric(self):
+        return self.metric.as_tuple()
 
     def mutate(self, ind):
         if random.random() < self.params.mutation:

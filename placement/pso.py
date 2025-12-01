@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from core import Env
 
 from .base import Coverage, jit_calculate_coverage, calculate_physics_factor
-from .node import Particle
+from .node import Particle, Metric
 
 @dataclass
 class PSOParams:
@@ -39,6 +39,7 @@ class ParticleSwarmOptimizer(Coverage):
     def __init__(self, env: Env, params: PSOParams = None):
         super().__init__(env)
         self.params = params if params else PSOParams()
+        self.metric = Metric()
 
         # Physics
         p_factor = calculate_physics_factor(self.params.signal_threshold)
@@ -159,7 +160,18 @@ class ParticleSwarmOptimizer(Coverage):
             float(self.params.tower_gain), float(self.params.robot_gain), 
             float(self.params.signal_max), float(self.params.signal_threshold)
         )
-        return cost_obs + cost_connect + cost_coll + cost_cover * self.params.w_coverage
+
+        total = cost_obs + cost_connect + cost_coll + cost_cover * self.params.w_coverage
+        self.metric.cost_obs = cost_obs
+        self.metric.cost_connect = cost_connect
+        self.metric.cost_coll = cost_coll
+        self.metric.cost_cover = cost_cover
+        self.metric.cost_all = total
+
+        return total
+
+    def compute_metric(self):
+        return self.metric.as_tuple()
 
     def update_particle(self, particle: Particle):
         new_positions = []
@@ -217,6 +229,6 @@ class ParticleSwarmOptimizer(Coverage):
                 print(f"Early stop at Iter {iteration+1}")
                 print(f"Early stop at Iter {self.stopped_iter}")
                 break
-        
+        cost = self.evaluate(self.global_best_position)
         print(f"PSO End. Best Cost: {self.global_best_cost:.2f}")
         return [(int(round(x)), int(round(y))) for (x, y) in self.global_best_position]

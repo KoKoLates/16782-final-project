@@ -15,8 +15,8 @@ from functools import reduce
 from typing import Set, List, Tuple, Optional
 
 
-class ObstacleHandler:
-    def __init__(self, vertices: List[Tuple[float, float]], attenuation: float = 0.1):
+class ObstacleHandler(object):
+    def __init__(self, vertices: List[Tuple[float, float]], attenuation: float = 0.5):
         self.vertices = np.array(vertices)
         self.center = np.mean(self.vertices, axis=0)
         self.attenuation = attenuation
@@ -39,7 +39,12 @@ class ObstacleHandler:
         
         return inside
     
-    def line_attenuation(self, p1: np.ndarray, p2: np.ndarray, num_samples: int = 10) -> float:
+    def line_attenuation(
+        self, 
+        p1: np.ndarray, 
+        p2: np.ndarray, 
+        num_samples: int = 10
+    ) -> float:
         samples_x = np.linspace(p1[0], p2[0], num_samples)
         samples_y = np.linspace(p1[1], p2[1], num_samples)
         
@@ -67,38 +72,61 @@ class ObstacleHandler:
         
         return inside
     
-    def create_field_attenuation_mask(self, X: np.ndarray, Y: np.ndarray, 
-                                     source_pos: np.ndarray) -> np.ndarray:
+    def _find_silhouette_vertices(self, source_pos: np.ndarray) -> Tuple[int, int]:
         s_x, s_y = source_pos
         
-        vertex_angles = np.arctan2(self.vertices[:, 1] - s_y, self.vertices[:, 0] - s_x)
-        angle_center = np.arctan2(self.center[1] - s_y, self.center[0] - s_x)
+        dx = self.vertices[:, 0] - s_x
+        dy = self.vertices[:, 1] - s_y
+        angles = np.arctan2(dy, dx)
         
-        relative_angles = (vertex_angles - angle_center + np.pi) % (2 * np.pi) - np.pi
-        min_rel_angle = np.min(relative_angles)
-        max_rel_angle = np.max(relative_angles)
+        sorted_indices = np.argsort(angles)
+        sorted_angles = angles[sorted_indices]
         
-        shadow_angle_1 = (angle_center + min_rel_angle + np.pi) % (2 * np.pi) - np.pi
-        shadow_angle_2 = (angle_center + max_rel_angle + np.pi) % (2 * np.pi) - np.pi
+        angle_diffs = np.diff(np.concatenate([sorted_angles, [sorted_angles[0] + 2*np.pi]]))
+        max_gap_idx = np.argmax(angle_diffs)
         
-        Grid_Angles = np.arctan2(Y - s_y, X - s_x)
+        left_idx = sorted_indices[(max_gap_idx + 1) % len(sorted_indices)]
+        right_idx = sorted_indices[max_gap_idx]
         
-        a1, a2 = shadow_angle_1, shadow_angle_2
-        if a1 <= a2:
-            is_in_wedge = (Grid_Angles >= a1) & (Grid_Angles <= a2)
-        else:
-            is_in_wedge = (Grid_Angles >= a1) | (Grid_Angles <= a2)
-        vertex_dists_sq = np.sum((self.vertices - source_pos)**2, axis=1)
-        min_dist_sq = np.min(vertex_dists_sq)
-        Grid_Dist_Sq = (X - s_x)**2 + (Y - s_y)**2
-        is_behind = (Grid_Dist_Sq >= min_dist_sq * 0.95)
-        
+        return left_idx, right_idx
+    
+    def create_field_attenuation_mask(
+        self, 
+        X: np.ndarray, 
+        Y: np.ndarray, 
+        source_pos: np.ndarray
+    ) -> np.ndarray:
+        s_x, s_y = source_pos
         is_inside = self._vectorized_point_in_polygon(X, Y)
+        idx1, idx2 = self._find_silhouette_vertices(source_pos)
+        v1 = self.vertices[idx1]  
+        v2 = self.vertices[idx2]
         
-        shadow_mask = (is_in_wedge & is_behind) | is_inside
+        a = v2[1] - v1[1]
+        b = -(v2[0] - v1[0])
+        c = (v2[0] - v1[0]) * v1[1] - (v2[1] - v1[1]) * v1[0]
+        
+        source_side = a * s_x + b * s_y + c
+        grid_side = a * X + b * Y + c
+        on_shadow_side = (source_side * grid_side) < 0
+
+        angle1 = np.arctan2(v1[1] - s_y, v1[0] - s_x)
+        angle2 = np.arctan2(v2[1] - s_y, v2[0] - s_x)
+        angle1 = (angle1 + 2 * np.pi) % (2 * np.pi)
+        angle2 = (angle2 + 2 * np.pi) % (2 * np.pi)
+        
+        grid_angles = np.arctan2(Y - s_y, X - s_x)
+        grid_angles = (grid_angles + 2 * np.pi) % (2 * np.pi)
+        
+        if angle1 <= angle2:
+            in_cone = (grid_angles >= angle1) & (grid_angles <= angle2)
+        else:
+            in_cone = (grid_angles >= angle1) | (grid_angles <= angle2)
+        
+        shadow_region = (in_cone & on_shadow_side) | is_inside
         
         mask = np.ones_like(X, dtype=np.float32)
-        mask[shadow_mask] = self.attenuation
+        mask[shadow_region] = self.attenuation
         
         return mask
 
@@ -111,7 +139,7 @@ class SignalVisualizer:
     ROBOT_GAIN  = 4 
     MAX_SIGNAL_DISPLAY = 10.0
     
-    def __init__(self, env: Env, resolution: int = 150):
+    def __init__(self, env: Env, resolution: int = 200):
         self.env = env
         self.w, self.h = env.shape
         self.station_position = np.array([self.w // 2, self.h // 2])
