@@ -224,8 +224,8 @@ class ParticleSwarmOptimizer(Coverage):
             else: stall = 0; best_hist = self.global_best_cost
 
             if stall >= self.params.patience:
-                print(f"Early stop at Iter {iteration+1}")
+                # print(f"Early stop at Iter {iteration+1}")
                 break
         cost = self.evaluate(self.global_best_position)
-        print(f"PSO End. Best Cost: {self.global_best_cost:.2f}")
+        # print(f"PSO End. Best Cost: {self.global_best_cost:.2f}")
         return [(int(round(x)), int(round(y))) for (x, y) in self.global_best_position]

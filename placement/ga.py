@@ -161,7 +161,7 @@ class GA(Coverage):
                 best_hist = chosen_cost
                 
             if stall >= self.params.patience:
-                print(f"Early stop at Gen {gen+1}")
+                # print(f"Early stop at Gen {gen+1}")
                 break
 
             new_pop = [chosen_solution] 
