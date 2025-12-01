@@ -119,3 +119,6 @@ class Coverage:
 
     def process(self) -> List[Tuple[int, int]]:
         raise NotImplementedError
+
+    def compute_metric(self):
+        raise NotImplementedError

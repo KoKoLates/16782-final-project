@@ -16,6 +16,7 @@ if __name__ == "__main__":
 
     env = Env(args.file)
     cov_opt = ParticleSwarmOptimizer(env)
+    cost_obs, cost_connect, cost_coll, cost_travel, cost_cover, cost_all = cov_opt.compute_metric()
 
     points = cov_opt.process()
 
