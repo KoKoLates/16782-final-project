@@ -302,7 +302,8 @@ if task_type in ["Planner", "Both (Stage 1 + Stage 2)"]:
             if task_type not in ["Both (Stage 1 + Stage 2)"]:
                 target_mode = st.sidebar.radio(
                         "Number to generate",
-                        ["Default with map", "Custom Number"]
+                        ["Default with map", "Custom Number"],
+                        key="pp_gen_mode"
                     )
                     
                 if target_mode == "Custom Number":
@@ -311,11 +312,13 @@ if task_type in ["Planner", "Both (Stage 1 + Stage 2)"]:
                     target_num = 0
 
         if plan_algo == "CBS":    
-            target_mode = st.sidebar.radio(
-                    "Number to generate",
-                    ["Default with map", "Custom Number"]
-                )
+            
             if task_type not in ["Both (Stage 1 + Stage 2)"]:
+                target_mode = st.sidebar.radio(
+                    "Number to generate",
+                    ["Default with map", "Custom Number"],
+                    key="cbs_gen_mode"
+                )
                 if target_mode == "Custom Number":
                     target_num = st.sidebar.slider("Number of Targets", min_value=1, max_value=25, value=5)
                 else:
@@ -416,6 +419,8 @@ if run_pressed:
                         planner = PrioritizedPlanner(env, priority_mode=priority_mode)
                         paths = planner.process(demo_targets)
                     elif plan_algo == "CBS":
+                        if env.robot_num > 10:
+                            st.warning("CBS may be very slow for more than 10 robots.")
                         planner = CBSPlanner(env, max_time=100)
                         paths = planner.process(demo_targets)
                     elif plan_algo == "JSS":
