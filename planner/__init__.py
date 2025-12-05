@@ -5,11 +5,18 @@ from .cbs import CBSPlanner
 from .jss import JointAStarPlanner
 from .prioritize import PrioritizedPlanner
 
+from .evaluation import PlannerRun, Analyzer, create_animation
+
 __all__ = [
     "Planner", 
     "Path", 
     "State",
     "JointAStarPlanner", 
     "PrioritizedPlanner", 
-    "CBSPlanner"
+    "CBSPlanner",
+
+    # evaluation
+    "PlannerRun",
+    "Analyzer",
+    "create_animation"
 ]

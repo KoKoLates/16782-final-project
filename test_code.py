@@ -3,14 +3,15 @@ from __future__ import annotations
 
 import os
 import time
-import random
-from typing import List, Tuple, Optional, Dict
-import statistics
 import math
+import random
+import statistics
+
+from typing import List, Tuple, Optional
+
 from core import Env
-from planner import CBSPlanner
-from planner import PrioritizedPlanner
-from planner.evaluation import Analyzer, PlannerRun, create_animation
+from planner import CBSPlanner, PrioritizedPlanner
+from planner import Analyzer, PlannerRun, create_animation
 
 
 
