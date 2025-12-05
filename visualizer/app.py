@@ -6,24 +6,21 @@ current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.insert(0, parent_dir)
 
+import matplotlib
+import numpy as np
+import matplotlib.pyplot as plt
 import streamlit as st
 import streamlit.components.v1 as components
-import numpy as np
-import random
-import matplotlib
-import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
-# from multi_robot import World, Visualizer as OldVisualizer, Robot, Entity, Obstacle
-from wifi_signal import SignalVisualizer
-from core.env import Env
-from placement.pso import ParticleSwarmOptimizer, PSOParams
-from placement.ga import GA, GAParams
-from planner.prioritize import PrioritizedPlanner
-from planner.cbs import CBSPlanner
-from planner.jss import JointAStarPlanner
+from core import Env
+from planner import PrioritizedPlanner, CBSPlanner, JointAStarPlanner
+from placement import ParticleSwarmOptimizer, PSOParams, GA, GAParams
 from visualizer import Visualizer as BaseNewVisualizer
-from placement.node import get_valid_position_on_map
+from visualizer import SignalVisualizer
+
+from placement import get_valid_position_on_map
+
 
 def run_coverage(num):
     env = Env(map_path)

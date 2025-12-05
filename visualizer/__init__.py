@@ -1,5 +1,5 @@
 from .visualizer import Visualizer
-from .signal import SignalVisualizer
+from .wireless_signal import SignalVisualizer
 
 __all__ = [
     "Visualizer",

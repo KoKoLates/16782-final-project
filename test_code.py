@@ -7,10 +7,10 @@ import random
 from typing import List, Tuple, Optional, Dict
 import statistics
 import math
-from core.env import Env
-from planner.cbs import CBSPlanner
-from planner.prioritize import PrioritizedPlanner
-from planner.evaluation import Analyzer, PlannerRun, create_animation
+from core import Env
+from planner import CBSPlanner
+from planner import PrioritizedPlanner
+from planner import Analyzer, PlannerRun, create_animation
 
 
 
