@@ -210,3 +210,4 @@ __marimo__/
 .vscode/
 cache/
 test.py
+results/
