@@ -10,7 +10,7 @@ import math
 from core import Env
 from planner import CBSPlanner
 from planner import PrioritizedPlanner
-from planner import Analyzer, PlannerRun, create_animation
+from planner.evaluation import Analyzer, PlannerRun, create_animation
 
 
 
