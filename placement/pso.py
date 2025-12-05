@@ -199,6 +199,7 @@ class ParticleSwarmOptimizer(Coverage):
         particle.velocity = new_velocities
 
     def process(self) -> List[Tuple[int, int]]:
+        self.stopped_iter = 0
         for particle in self.particles:
             cost = self.evaluate(particle.position)
             particle.best_cost = cost
@@ -224,6 +225,8 @@ class ParticleSwarmOptimizer(Coverage):
             else: stall = 0; best_hist = self.global_best_cost
 
             if stall >= self.params.patience:
+                self.stopped_iter = iteration + 1
+                # print(f"Early stop at Iter {self.stopped_iter}")
                 # print(f"Early stop at Iter {iteration+1}")
                 break
         cost = self.evaluate(self.global_best_position)
