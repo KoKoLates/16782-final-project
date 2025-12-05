@@ -163,7 +163,7 @@ class GA(Coverage):
                 
             if stall >= self.params.patience:
                 self.stopped_iter = gen + 1
-                print(f"Early stop at Gen {gen+1}")
+                # print(f"Early stop at Gen {gen+1}")
                 break
 
             new_pop = [chosen_solution] 
@@ -175,7 +175,7 @@ class GA(Coverage):
                 new_pop.extend([c1, c2])
             population = new_pop[:self.params.pop_size]
         
-        print(f"End. Best Cost: {chosen_cost:.2f}")
+        # print(f"End. Best Cost: {chosen_cost:.2f}")
         
         raw_result = chosen_solution if chosen_solution else population[0]
         float_positions = [(float(x), float(y)) for x, y in raw_result]
